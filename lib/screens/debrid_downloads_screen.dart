@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/services.dart';
@@ -1889,7 +1889,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                                             ),
                                       label: Text(
                                         downloadingAll
-                                            ? 'Adding $addCount/${selectedFiles.length}…'
+                                            ? 'Adding $addCount/${selectedFiles.length}â€¦'
                                             : 'Download Selected (${selectedFiles.length})',
                                         style: const TextStyle(
                                           color: Colors.white,
@@ -2079,7 +2079,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                                                 ),
                                           label: Text(
                                             downloadingAll
-                                                ? 'Adding $addCount/${files.length}…'
+                                                ? 'Adding $addCount/${files.length}â€¦'
                                                 : 'Download All',
                                             style: const TextStyle(
                                               color: Colors.white,
@@ -3125,6 +3125,129 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     }
   }
 
+  Future<void> _handleEditTorrent(RDTorrent torrent) async {
+    if (_apiKey == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('API key not available'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Loading files...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      // Add magnet to Real Debrid again to get file list
+      final magnetLink = 'magnet:?xt=urn:btih:${torrent.hash}';
+      final addResult = await DebridService.addMagnet(_apiKey!, magnetLink);
+      final torrentId = addResult['id'] as String;
+      
+      // Get torrent info to see files
+      await Future.delayed(const Duration(seconds: 2));
+      final torrentInfo = await DebridService.getTorrentInfo(_apiKey!, torrentId);
+      final files = torrentInfo['files'] as List<dynamic>;
+      
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show file selection dialog
+      if (mounted && files.isNotEmpty) {
+        await _showFileSelectionDialogForEdit(torrent, torrentId, files);
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading files: ${e.toString()}'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showFileSelectionDialogForEdit(
+    RDTorrent originalTorrent,
+    String newTorrentId,
+    List<dynamic> files,
+  ) async {
+    // Show file selection dialog
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _FileSelectionScreen(
+        torrentId: newTorrentId,
+        torrentName: originalTorrent.filename,
+        files: files,
+        apiKey: _apiKey!,
+      ),
+    );
+    
+    // If dialog was closed without selecting files, delete the new torrent
+    if (result != true) {
+      try {
+        await DebridService.deleteTorrent(_apiKey!, newTorrentId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Edit cancelled'),
+              backgroundColor: Color(0xFF6B7280),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        print('Failed to delete torrent: $e');
+      }
+    } else {
+      // Refresh the list to show the new torrent
+      if (mounted) {
+        await _fetchTorrents(_apiKey!, reset: true);
+      }
+    }
+  }
+
   void _showTorrentMoreOptions(RDTorrent torrent) {
     final isMultiFile = torrent.links.length > 1;
     final options = <_ActionSheetOption>[
@@ -3132,6 +3255,11 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
         icon: Icons.playlist_add,
         label: 'Add to Playlist',
         onTap: () => _handleAddTorrentToPlaylist(torrent),
+      ),
+      _ActionSheetOption(
+        icon: Icons.edit_outlined,
+        label: 'Edit',
+        onTap: () => _handleEditTorrent(torrent),
       ),
       _ActionSheetOption(
         icon: Icons.copy,
@@ -3467,7 +3595,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
               CircularProgressIndicator(),
               SizedBox(width: 16),
               Text(
-                'Preparing playlist…',
+                'Preparing playlistâ€¦',
                 style: TextStyle(color: Colors.white),
               ),
             ],
@@ -4806,7 +4934,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                                       color: Colors.white,
                                     ),
                               label: Text(
-                                isUnrestricting ? 'Working…' : 'Copy',
+                                isUnrestricting ? 'Workingâ€¦' : 'Copy',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -5207,12 +5335,15 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                               size: 16,
                             )
                           : someSelected
-                          ? const Icon(
-                              Icons.remove,
-                              color: Colors.white,
-                              size: 16,
-                            )
-                          : null,
+                              ? Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF10B981),
+                                    borderRadius: BorderRadius.all(Radius.circular(3)),
+                                  ),
+                                )
+                              : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -5335,3 +5466,525 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     );
   }
 }
+
+// File selection screen for editing torrents
+class _FileSelectionScreen extends StatefulWidget {
+  final String torrentId;
+  final String torrentName;
+  final List<dynamic> files;
+  final String apiKey;
+
+  const _FileSelectionScreen({
+    required this.torrentId,
+    required this.torrentName,
+    required this.files,
+    required this.apiKey,
+  });
+
+  @override
+  State<_FileSelectionScreen> createState() => _FileSelectionScreenState();
+}
+
+class _FileSelectionScreenState extends State<_FileSelectionScreen> {
+  final Set<int> _selectedFileIds = {};
+  bool _selectAll = true;
+  List<dynamic> _sortedFiles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Group files by folder
+    final Map<String, List<dynamic>> folderGroups = {};
+    for (final file in widget.files) {
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      if (!folderGroups.containsKey(folder)) {
+        folderGroups[folder] = [];
+      }
+      folderGroups[folder]!.add(file);
+    }
+    
+    // Sort folders by name (natural sort)
+    final sortedFolders = folderGroups.keys.toList()..sort((a, b) => _naturalCompare(a, b));
+    
+    // Sort files within each folder and build final sorted list
+    _sortedFiles = [];
+    for (final folder in sortedFolders) {
+      final filesInFolder = folderGroups[folder]!;
+      // Sort files by name within the folder (natural sort)
+      filesInFolder.sort((a, b) {
+        final nameA = (a['path'] as String?)?.split('/').last ?? '';
+        final nameB = (b['path'] as String?)?.split('/').last ?? '';
+        return _naturalCompare(nameA, nameB);
+      });
+      _sortedFiles.addAll(filesInFolder);
+    }
+    
+    // Select all files by default
+    for (final file in widget.files) {
+      _selectedFileIds.add(file['id'] as int);
+    }
+    _selectAll = true;
+  }
+
+  /// Natural sort comparison that handles numbers correctly.
+  int _naturalCompare(String a, String b) {
+    final RegExp numberPattern = RegExp(r'(\d+)');
+    final List<String> aParts = [];
+    final List<String> bParts = [];
+    
+    // Split strings into text and number parts
+    int aIndex = 0;
+    for (final match in numberPattern.allMatches(a)) {
+      if (match.start > aIndex) {
+        aParts.add(a.substring(aIndex, match.start));
+      }
+      aParts.add(match.group(0)!);
+      aIndex = match.end;
+    }
+    if (aIndex < a.length) {
+      aParts.add(a.substring(aIndex));
+    }
+    
+    int bIndex = 0;
+    for (final match in numberPattern.allMatches(b)) {
+      if (match.start > bIndex) {
+        bParts.add(b.substring(bIndex, match.start));
+      }
+      bParts.add(match.group(0)!);
+      bIndex = match.end;
+    }
+    if (bIndex < b.length) {
+      bParts.add(b.substring(bIndex));
+    }
+    
+    // Compare parts
+    for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      
+      // Check if both parts are numbers
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      
+      if (aNum != null && bNum != null) {
+        // Compare numerically
+        if (aNum != bNum) {
+          return aNum.compareTo(bNum);
+        }
+      } else {
+        // Compare lexicographically (case-insensitive)
+        final comparison = aPart.toLowerCase().compareTo(bPart.toLowerCase());
+        if (comparison != 0) {
+          return comparison;
+        }
+      }
+    }
+    
+    // If all parts match, compare by length
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectAll) {
+        _selectedFileIds.clear();
+      } else {
+        _selectedFileIds.clear();
+        for (final file in widget.files) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = !_selectAll;
+    });
+  }
+
+  void _selectOnlyVideoFiles() {
+    setState(() {
+      _selectedFileIds.clear();
+      for (final file in widget.files) {
+        final fileName = (file['name'] as String?)?.isNotEmpty == true
+            ? file['name'] as String
+            : FileUtils.getFileName(file['path'] as String? ?? '');
+        if (fileName.isNotEmpty && FileUtils.isVideoFile(fileName)) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = _selectedFileIds.length == widget.files.length;
+    });
+  }
+
+  Future<void> _addToRealDebrid() async {
+    if (_selectedFileIds.isEmpty) return;
+
+    // Save messenger before closing dialog
+    final messenger = ScaffoldMessenger.of(context);
+    
+    // Close file selection dialog first with true (files added successfully)
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
+
+    try {
+      // Select files
+      await DebridService.selectFiles(
+        widget.apiKey,
+        widget.torrentId,
+        _selectedFileIds.toList(),
+      );
+
+      // Show success message
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.download, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Torrent added with selected files!',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      // Show error
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.error, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Failed to add torrent: ${e.toString()}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                ),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.playlist_add_check,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Select Files',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    tooltip: 'Cancel',
+                  ),
+                ],
+              ),
+            ),
+
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleSelectAll,
+                      icon: Icon(
+                        _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                        size: 18,
+                      ),
+                      label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectOnlyVideoFiles,
+                      icon: const Icon(Icons.movie, size: 18),
+                      label: const Text('Only Video'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF10B981),
+                        side: const BorderSide(color: Color(0xFF10B981)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Stats
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${_selectedFileIds.length} of ${widget.files.length} files selected',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Files list grouped by folder
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(16),
+                itemCount: _sortedFiles.length,
+                itemBuilder: (context, index) {
+                  final file = _sortedFiles[index];
+                  final path = file['path'] as String? ?? '';
+                  final parts = path.split('/');
+                  final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+                  
+                  // Check if this is the start of a new folder
+                  final isNewFolder = index == 0 || 
+                    (index > 0 && 
+                      (_sortedFiles[index - 1]['path'] as String? ?? '').split('/').sublist(0, parts.length - 1).join('/') != folder);
+                  
+                  final fileId = file['id'] as int;
+                  String fileName = (file['name'] as String?)?.isNotEmpty == true
+                      ? file['name'] as String
+                      : FileUtils.getFileName(path);
+                  if (fileName.isEmpty) fileName = 'Unknown';
+                  final fileSize = file['bytes'] as int? ?? 0;
+                  final isSelected = _selectedFileIds.contains(fileId);
+                  final isVideo = FileUtils.isVideoFile(fileName);
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Folder header
+                      if (isNewFolder && folder.isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: index == 0 ? 0 : 16, bottom: 8),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.folder,
+                                color: Color(0xFF8B5CF6),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  folder.split('/').last,
+                                  style: const TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      
+                      // File item
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                              : const Color(0xFF1F2937),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFF6366F1)
+                                : Colors.white.withValues(alpha: 0.1),
+                            width: 2,
+                          ),
+                        ),
+                        child: CheckboxListTile(
+                          value: isSelected,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedFileIds.add(fileId);
+                              } else {
+                                _selectedFileIds.remove(fileId);
+                              }
+                              _selectAll = _selectedFileIds.length == widget.files.length;
+                            });
+                          },
+                          title: Row(
+                            children: [
+                              Icon(
+                                isVideo ? Icons.movie : Icons.insert_drive_file,
+                                color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  fileName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 28),
+                            child: Text(
+                              Formatters.formatFileSize(fileSize),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          activeColor: const Color(0xFF6366F1),
+                          checkColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+
+            // Add button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Add to Real-Debrid',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
