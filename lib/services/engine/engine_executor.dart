@@ -374,32 +374,51 @@ class EngineExecutor {
     return result;
   }
 
-  /// Make HTTP request.
+  /// Make HTTP request with retry logic for connection errors.
   Future<http.Response> makeRequest(String url, RequestConfig config) async {
+    const int maxRetries = 2;
+    const Duration retryDelay = Duration(milliseconds: 500);
+    
     final Duration timeout = Duration(
       seconds: config.timeoutSeconds ?? 30,
     );
 
-    try {
-      final Uri uri = Uri.parse(url);
+    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        final Uri uri = Uri.parse(url);
 
-      if (config.method.toUpperCase() == 'GET') {
-        return await http.get(
-          uri,
-          headers: _getDefaultHeaders(),
-        ).timeout(timeout);
-      } else if (config.method.toUpperCase() == 'POST') {
-        return await http.post(
-          uri,
-          headers: _getDefaultHeaders(),
-        ).timeout(timeout);
-      } else {
-        throw UnsupportedError('Unsupported HTTP method: ${config.method}');
+        if (config.method.toUpperCase() == 'GET') {
+          return await http.get(
+            uri,
+            headers: _getDefaultHeaders(),
+          ).timeout(timeout);
+        } else if (config.method.toUpperCase() == 'POST') {
+          return await http.post(
+            uri,
+            headers: _getDefaultHeaders(),
+          ).timeout(timeout);
+        } else {
+          throw UnsupportedError('Unsupported HTTP method: ${config.method}');
+        }
+      } catch (e) {
+        final isLastAttempt = attempt == maxRetries;
+        final isRetryableError = e.toString().contains('HandshakeException') ||
+                                  e.toString().contains('Connection') ||
+                                  e.toString().contains('SocketException');
+        
+        if (isLastAttempt || !isRetryableError) {
+          debugPrint('EngineExecutor: HTTP request error: $e');
+          rethrow;
+        }
+        
+        // Wait before retrying
+        debugPrint('EngineExecutor: Retrying request (attempt ${attempt + 2}/${maxRetries + 1}) after error: $e');
+        await Future.delayed(retryDelay);
       }
-    } catch (e) {
-      debugPrint('EngineExecutor: HTTP request error: $e');
-      rethrow;
     }
+    
+    // Should never reach here
+    throw Exception('Failed to make request after $maxRetries retries');
   }
 
   /// Get default HTTP headers.

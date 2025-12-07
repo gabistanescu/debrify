@@ -2259,12 +2259,15 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       // Close loading dialog
       Navigator.of(context).pop();
 
-      // Check if the error is due to non-cached torrent
+      // Check if the error is due to non-cached torrent or no seeders
       final errorMessage = e.toString().toLowerCase();
       if (errorMessage.contains('not readily available') || 
           errorMessage.contains('file is not available') ||
           errorMessage.contains('not cached') ||
-          errorMessage.contains('please try a different torrent')) {
+          errorMessage.contains('please try a different torrent') ||
+          errorMessage.contains('magnet') ||
+          errorMessage.contains('no server') ||
+          errorMessage.contains('error')) {
         // Show bottom sheet for non-cached torrent
         await _showNonCachedTorrentBottomSheet(infohash, torrentName, apiKey);
         return;
@@ -2362,6 +2365,251 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     });
   }
 
+  // Check Files button - shows file selection dialog with cache status
+  Future<void> _showCheckFilesDialog(
+    String infohash,
+    String torrentName,
+    int index,
+  ) async {
+    // Check if API key is available
+    final apiKey = await StorageService.getApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.error, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Please add your Real Debrid API key in Settings first!',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Show loading dialog while checking and adding magnet
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Checking cache and loading files...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      // Add magnet to Real Debrid (this also checks cache)
+      final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+      final addResult = await DebridService.addMagnet(apiKey, magnetLink);
+      final torrentId = addResult['id'] as String;
+      
+      // Wait for torrent info and files to be ready (with retry logic)
+      Map<String, dynamic>? torrentInfo;
+      List<dynamic>? files;
+      String? status;
+      int retries = 0;
+      const maxRetries = 10; // Max 20 seconds (10 retries * 2 seconds)
+      
+      while (retries < maxRetries) {
+        await Future.delayed(const Duration(seconds: 2));
+        
+        torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
+        files = torrentInfo['files'] as List<dynamic>?;
+        status = torrentInfo['status'] as String?;
+        
+        print('Retry $retries - Status: $status, Files count: ${files?.length ?? 0}');
+        
+        // If we have files, we're done
+        if (files != null && files.isNotEmpty) {
+          break;
+        }
+        
+        // If status is magnet_error or torrent is dead, stop retrying
+        if (status == 'magnet_error' || status == 'error' || status == 'dead') {
+          break;
+        }
+        
+        // If still in magnet_conversion, keep waiting
+        if (status == 'magnet_conversion') {
+          retries++;
+          continue;
+        }
+        
+        // If waiting_files_selection but no files yet, wait a bit more
+        if (status == 'waiting_files_selection') {
+          retries++;
+          if (retries >= 3) break; // Don't wait too long if status is correct
+          continue;
+        }
+        
+        // Unknown status, break
+        break;
+      }
+      
+      print('Final - Status: $status, Files count: ${files?.length ?? 0}'); // Debug
+      
+      // Check cache status from torrent info
+      final progress = torrentInfo?['progress'] as num? ?? 0;
+      
+      // Cached = instant availability (waiting for file selection or already downloaded)
+      // Not Cached = needs to download first (magnet_conversion, downloading, queued)
+      final isCached = (status == 'waiting_files_selection' || 
+                       status == 'downloaded' || 
+                       progress >= 100);
+      
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Check if files are available
+      if (files == null || files.isEmpty) {
+        // Delete the torrent since it has no files or failed
+        try {
+          await DebridService.deleteTorrent(apiKey, torrentId);
+        } catch (e) {
+          print('Failed to delete empty torrent: $e');
+        }
+        
+        if (mounted) {
+          String errorMessage = 'No seeders available for this torrent';
+          if (status == 'magnet_conversion') {
+            errorMessage = 'Torrent is still loading. Please try again in a moment.';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.error, color: Colors.white, size: 16),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      errorMessage,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF1E293B),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Show file selection dialog with cache status
+      if (mounted) {
+        await _showFileSelectionDialogWithCacheStatus(
+          infohash,
+          torrentName,
+          apiKey,
+          torrentId,
+          files,
+          isCached,
+        );
+      }
+    } catch (e) {
+      print('Error in _showCheckFilesDialog: $e'); // Debug
+      
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.error, color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Error loading files: ${e.toString()}',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF1E293B),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showNonCachedFileSelectionDialog(
     String infohash,
     String torrentName,
@@ -2455,6 +2703,50 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           apiKey: apiKey,
           torrentId: torrentId,
           files: files,
+          isCached: null, // No cache info for this flow
+        );
+      },
+    );
+    
+    // If dialog was closed without selecting files (result is null or false), delete the torrent
+    if (result != true) {
+      try {
+        await DebridService.deleteTorrent(apiKey, torrentId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Torrent cancelled and removed from library'),
+              backgroundColor: const Color(0xFF6B7280),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        // Silently fail - torrent deletion is not critical
+        print('Failed to delete torrent: $e');
+      }
+    }
+  }
+
+  Future<void> _showFileSelectionDialogWithCacheStatus(
+    String infohash,
+    String torrentName,
+    String apiKey,
+    String torrentId,
+    List<dynamic> files,
+    bool isCached,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // Force user to use buttons or X
+      builder: (BuildContext context) {
+        return _FileSelectionDialog(
+          infohash: infohash,
+          torrentName: torrentName,
+          apiKey: apiKey,
+          torrentId: torrentId,
+          files: files,
+          isCached: isCached, // Pass cache status
         );
       },
     );
@@ -2519,6 +2811,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       );
       return;
     }
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -6383,17 +6677,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
-                      focusColor:
-                          const Color(0xFF6366F1).withValues(alpha: 0.25),
-                      onTap: () =>
-                          _addToRealDebrid(torrent.infohash, torrent.name, index),
-                      onLongPress: () {
-                        _showFileSelectionDialog(
-                          torrent.infohash,
-                          torrent.name,
-                          index,
-                        );
-                      },
+                      focusColor: const Color(0xFF6366F1).withValues(alpha: 0.25),
+                      onTap: () => _addToRealDebrid(torrent.infohash, torrent.name, index),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -6408,9 +6693,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(
-                                0xFF1E40AF,
-                              ).withValues(alpha: 0.4),
+                              color: const Color(0xFF1E40AF).withValues(alpha: 0.4),
                               spreadRadius: 0,
                               blurRadius: 12,
                               offset: const Offset(0, 6),
@@ -6429,7 +6712,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                             SizedBox(width: 6),
                             Flexible(
                               child: Text(
-                                'Real-Debrid',
+                                'Add',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -6440,11 +6723,67 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                                 maxLines: 1,
                               ),
                             ),
-                            SizedBox(width: 4),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                Widget buildCheckFilesButton() {
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      focusColor: const Color(0xFF6366F1).withValues(alpha: 0.25),
+                      onTap: () => _showCheckFilesDialog(
+                        torrent.infohash,
+                        torrent.name,
+                        index,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1E40AF), Color(0xFF6366F1)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF1E40AF).withValues(alpha: 0.4),
+                              spreadRadius: 0,
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
                             Icon(
-                              Icons.expand_more_rounded,
-                              color: Colors.white70,
-                              size: 18,
+                              Icons.folder_open,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Files',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                  color: Colors.white,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
                           ],
                         ),
@@ -6533,6 +6872,12 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                         _apiKey!.isNotEmpty)
                     ? buildRealDebridButton()
                     : null;
+                final Widget? checkFilesButton =
+                    (_realDebridIntegrationEnabled &&
+                        _apiKey != null &&
+                        _apiKey!.isNotEmpty)
+                    ? buildCheckFilesButton()
+                    : null;
                 final Widget? pikpakButton = _pikpakEnabled
                     ? buildPikPakButton()
                     : null;
@@ -6541,10 +6886,11 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                   return const SizedBox.shrink();
                 }
 
-                // Count active buttons
-                final int buttonCount = [torboxButton, realDebridButton, pikpakButton]
+                // Count active buttons (checkFilesButton doesn't count separately, it's with realDebridButton)
+                int buttonCount = [torboxButton, pikpakButton]
                     .where((button) => button != null)
                     .length;
+                if (realDebridButton != null) buttonCount += 2; // Add + Files = 2 buttons
 
                 if (isCompactLayout) {
                   return Column(
@@ -6553,7 +6899,15 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                       if (torboxButton != null) torboxButton,
                       if (torboxButton != null && (realDebridButton != null || pikpakButton != null))
                         const SizedBox(height: 8),
-                      if (realDebridButton != null) realDebridButton,
+                      if (realDebridButton != null) ...[
+                        Row(
+                          children: [
+                            Expanded(child: realDebridButton),
+                            const SizedBox(width: 8),
+                            Expanded(child: checkFilesButton!),
+                          ],
+                        ),
+                      ],
                       if (realDebridButton != null && pikpakButton != null)
                         const SizedBox(height: 8),
                       if (pikpakButton != null) pikpakButton,
@@ -6562,32 +6916,21 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                 }
 
                 // For non-compact layouts, show buttons in a row
-                if (buttonCount == 3) {
-                  return Row(
-                    children: [
-                      Expanded(child: torboxButton!),
+                return Row(
+                  children: [
+                    if (torboxButton != null) ...[
+                      Expanded(child: torboxButton),
                       const SizedBox(width: 8),
-                      Expanded(child: realDebridButton!),
+                    ],
+                    if (realDebridButton != null) ...[
+                      Expanded(child: realDebridButton),
                       const SizedBox(width: 8),
-                      Expanded(child: pikpakButton!),
+                      Expanded(child: checkFilesButton!),
+                      if (pikpakButton != null) const SizedBox(width: 8),
                     ],
-                  );
-                } else if (buttonCount == 2) {
-                  return Row(
-                    children: [
-                      if (torboxButton != null) Expanded(child: torboxButton),
-                      if (torboxButton != null && (realDebridButton != null || pikpakButton != null))
-                        const SizedBox(width: 8),
-                      if (realDebridButton != null) Expanded(child: realDebridButton),
-                      if (realDebridButton != null && pikpakButton != null)
-                        const SizedBox(width: 8),
-                      if (pikpakButton != null) Expanded(child: pikpakButton),
-                    ],
-                  );
-                } else {
-                  final Widget singleButton = torboxButton ?? realDebridButton ?? pikpakButton!;
-                  return SizedBox(width: double.infinity, child: singleButton);
-                }
+                    if (pikpakButton != null) Expanded(child: pikpakButton),
+                  ],
+                );
               },
             ),
             // TV hint
@@ -6815,6 +7158,7 @@ class _FileSelectionDialog extends StatefulWidget {
   final String apiKey;
   final String torrentId;
   final List<dynamic> files;
+  final bool? isCached; // null = unknown, true = cached, false = not cached
 
   const _FileSelectionDialog({
     required this.infohash,
@@ -6822,6 +7166,7 @@ class _FileSelectionDialog extends StatefulWidget {
     required this.apiKey,
     required this.torrentId,
     required this.files,
+    this.isCached, // Optional - defaults to null
   });
 
   @override
@@ -6831,14 +7176,105 @@ class _FileSelectionDialog extends StatefulWidget {
 class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   final Set<int> _selectedFileIds = {};
   bool _selectAll = true;
+  List<dynamic> _sortedFiles = [];
 
   @override
   void initState() {
     super.initState();
+    
+    // Group files by folder
+    final Map<String, List<dynamic>> folderGroups = {};
+    for (final file in widget.files) {
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      if (!folderGroups.containsKey(folder)) {
+        folderGroups[folder] = [];
+      }
+      folderGroups[folder]!.add(file);
+    }
+    
+    // Sort folders by name (natural sort)
+    final sortedFolders = folderGroups.keys.toList()..sort((a, b) => _naturalCompare(a, b));
+    
+    // Sort files within each folder and build final sorted list
+    _sortedFiles = [];
+    for (final folder in sortedFolders) {
+      final filesInFolder = folderGroups[folder]!;
+      // Sort files by name within the folder (natural sort)
+      filesInFolder.sort((a, b) {
+        final nameA = (a['path'] as String?)?.split('/').last ?? '';
+        final nameB = (b['path'] as String?)?.split('/').last ?? '';
+        return _naturalCompare(nameA, nameB);
+      });
+      _sortedFiles.addAll(filesInFolder);
+    }
+    
     // Select all files by default
     for (final file in widget.files) {
       _selectedFileIds.add(file['id'] as int);
     }
+    _selectAll = true;
+  }
+
+  /// Natural sort comparison that handles numbers correctly.
+  /// For example: "2" < "19.2" < "20" instead of "19.2" < "2" < "20"
+  int _naturalCompare(String a, String b) {
+    final RegExp numberPattern = RegExp(r'(\d+)');
+    final List<String> aParts = [];
+    final List<String> bParts = [];
+    
+    // Split strings into text and number parts
+    int aIndex = 0;
+    for (final match in numberPattern.allMatches(a)) {
+      if (match.start > aIndex) {
+        aParts.add(a.substring(aIndex, match.start));
+      }
+      aParts.add(match.group(0)!);
+      aIndex = match.end;
+    }
+    if (aIndex < a.length) {
+      aParts.add(a.substring(aIndex));
+    }
+    
+    int bIndex = 0;
+    for (final match in numberPattern.allMatches(b)) {
+      if (match.start > bIndex) {
+        bParts.add(b.substring(bIndex, match.start));
+      }
+      bParts.add(match.group(0)!);
+      bIndex = match.end;
+    }
+    if (bIndex < b.length) {
+      bParts.add(b.substring(bIndex));
+    }
+    
+    // Compare parts
+    for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      
+      // Check if both parts are numbers
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      
+      if (aNum != null && bNum != null) {
+        // Compare numerically
+        if (aNum != bNum) {
+          return aNum.compareTo(bNum);
+        }
+      } else {
+        // Compare lexicographically (case-insensitive)
+        final comparison = aPart.toLowerCase().compareTo(bPart.toLowerCase());
+        if (comparison != 0) {
+          return comparison;
+        }
+      }
+    }
+    
+    // If all parts match, compare by length
+    return aParts.length.compareTo(bParts.length);
   }
 
   void _toggleSelectAll() {
@@ -6868,6 +7304,130 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
       }
       _selectAll = _selectedFileIds.length == widget.files.length;
     });
+  }
+
+  List<Widget> _buildFileListItems() {
+    final List<Widget> items = [];
+    String? currentFolder;
+    
+    for (int i = 0; i < _sortedFiles.length; i++) {
+      final file = _sortedFiles[i];
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      // Add folder header if it's a new folder
+      if (folder != currentFolder) {
+        currentFolder = folder;
+        if (folder.isNotEmpty) {
+          // Show only the last subfolder name
+          final folderName = folder.split('/').last;
+          items.add(
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.folder,
+                    color: Color(0xFF8B5CF6),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      folderName,
+                      style: const TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
+      
+      // Add file item
+      final fileId = file['id'] as int;
+      String fileName = (file['name'] as String?)?.isNotEmpty == true
+          ? file['name'] as String
+          : FileUtils.getFileName(path);
+      if (fileName.isEmpty) fileName = 'Unknown';
+      final fileSize = file['bytes'] as int? ?? 0;
+      final isSelected = _selectedFileIds.contains(fileId);
+      final isVideo = FileUtils.isVideoFile(fileName);
+
+      items.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                : const Color(0xFF1F2937),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF6366F1)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: 2,
+            ),
+          ),
+          child: CheckboxListTile(
+            value: isSelected,
+            onChanged: (bool? value) {
+              setState(() {
+                if (value == true) {
+                  _selectedFileIds.add(fileId);
+                } else {
+                  _selectedFileIds.remove(fileId);
+                }
+                _selectAll = _selectedFileIds.length == widget.files.length;
+              });
+            },
+            title: Row(
+              children: [
+                Icon(
+                  isVideo ? Icons.movie : Icons.insert_drive_file,
+                  color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    fileName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4, left: 28),
+              child: Text(
+                Formatters.formatFileSize(fileSize),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            activeColor: const Color(0xFF6366F1),
+            checkColor: Colors.white,
+          ),
+        ),
+      );
+    }
+    
+    return items;
   }
 
   Future<void> _addToRealDebrid() async {
@@ -7027,6 +7587,53 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
               ),
             ),
 
+            // Cache Status Badge (if available)
+            if (widget.isCached != null)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: widget.isCached!
+                      ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                      : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: widget.isCached!
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEF4444),
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.isCached! ? Icons.flash_on : Icons.hourglass_empty,
+                      color: widget.isCached!
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        widget.isCached! ? 'Cached ⚡' : 'Not Cached',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: widget.isCached!
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Action buttons
             Padding(
               padding: const EdgeInsets.all(16),
@@ -7078,84 +7685,14 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
 
             const SizedBox(height: 8),
 
-            // Files list
+            // Files list grouped by folder
             Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.all(16),
-                itemCount: widget.files.length,
+                itemCount: _buildFileListItems().length,
                 itemBuilder: (context, index) {
-                  final file = widget.files[index];
-                  final fileId = file['id'] as int;
-                  String fileName = (file['name'] as String?)?.isNotEmpty == true
-                      ? file['name'] as String
-                      : FileUtils.getFileName(file['path'] as String? ?? '');
-                  if (fileName.isEmpty) fileName = 'Unknown';
-                  final fileSize = file['bytes'] as int? ?? 0;
-                  final isSelected = _selectedFileIds.contains(fileId);
-                  final isVideo = FileUtils.isVideoFile(fileName);
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-                          : const Color(0xFF1F2937),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF6366F1)
-                            : Colors.white.withValues(alpha: 0.1),
-                        width: 2,
-                      ),
-                    ),
-                    child: CheckboxListTile(
-                      value: isSelected,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          if (value == true) {
-                            _selectedFileIds.add(fileId);
-                          } else {
-                            _selectedFileIds.remove(fileId);
-                          }
-                          _selectAll = _selectedFileIds.length == widget.files.length;
-                        });
-                      },
-                      title: Row(
-                        children: [
-                          Icon(
-                            isVideo ? Icons.movie : Icons.insert_drive_file,
-                            color: isVideo ? const Color(0xFF10B981) : Colors.white70,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              fileName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: Padding(
-                        padding: const EdgeInsets.only(top: 4, left: 28),
-                        child: Text(
-                          Formatters.formatFileSize(fileSize),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      activeColor: const Color(0xFF6366F1),
-                      checkColor: Colors.white,
-                    ),
-                  );
+                  return _buildFileListItems()[index];
                 },
               ),
             ),
