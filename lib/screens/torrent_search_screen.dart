@@ -2453,6 +2453,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       String? status;
       int retries = 0;
       const maxRetries = 10; // Max 20 seconds (10 retries * 2 seconds)
+      bool filesAppearedQuickly = false; // Track if files appeared in first 2 retries (cached indicator)
       
       while (retries < maxRetries) {
         await Future.delayed(const Duration(seconds: 2));
@@ -2465,6 +2466,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         
         // If we have files, we're done
         if (files != null && files.isNotEmpty) {
+          if (retries <= 2) {
+            filesAppearedQuickly = true; // Files appeared within 4 seconds = likely cached
+          }
           break;
         }
         
@@ -2493,13 +2497,15 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       print('Final - Status: $status, Files count: ${files?.length ?? 0}'); // Debug
       
       // Check cache status from torrent info
-      final progress = torrentInfo?['progress'] as num? ?? 0;
-      
-      // Cached = instant availability (waiting for file selection or already downloaded)
-      // Not Cached = needs to download first (magnet_conversion, downloading, queued)
-      final isCached = (status == 'waiting_files_selection' || 
-                       status == 'downloaded' || 
-                       progress >= 100);
+      // A torrent is cached if:
+      // 1. Files appeared quickly (within 4 seconds / 2 retries) AND
+      // 2. Status is waiting_files_selection or downloaded AND
+      // 3. Files are available
+      // This indicates Real-Debrid already had the files cached
+      final isCached = filesAppearedQuickly && 
+                       (status == 'waiting_files_selection' || status == 'downloaded') && 
+                       files != null && 
+                       files.isNotEmpty;
       
       // Close loading dialog
       if (mounted && Navigator.of(context).canPop()) {
@@ -7177,6 +7183,7 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   final Set<int> _selectedFileIds = {};
   bool _selectAll = true;
   List<dynamic> _sortedFiles = [];
+  List<Widget>? _cachedFileListItems; // Cache for file list items
 
   @override
   void initState() {
@@ -7307,6 +7314,11 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   }
 
   List<Widget> _buildFileListItems() {
+    // Return cached list if available
+    if (_cachedFileListItems != null) {
+      return _cachedFileListItems!;
+    }
+    
     final List<Widget> items = [];
     String? currentFolder;
     
@@ -7427,6 +7439,8 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
       );
     }
     
+    // Cache the list
+    _cachedFileListItems = items;
     return items;
   }
 

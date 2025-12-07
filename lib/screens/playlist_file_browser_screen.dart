@@ -29,6 +29,7 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
   String? _error;
   bool _sortAscending = true; // true = A-Z, false = Z-A
   Map<String, dynamic>? _lastPlayedFile;
+  List<Widget>? _cachedFileListItems; // Cache for file list items
 
   String get _playlistId {
     // Use the same dedupe key computation as playlist screen
@@ -134,14 +135,96 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
       return path.contains(_searchQuery.toLowerCase());
     }).toList();
 
-    // Sort files by name (A-Z or Z-A)
-    files.sort((a, b) {
-      final nameA = (a['path'] as String? ?? '').toLowerCase();
-      final nameB = (b['path'] as String? ?? '').toLowerCase();
-      return _sortAscending ? nameA.compareTo(nameB) : nameB.compareTo(nameA);
+    // Group files by folder
+    final Map<String, List<dynamic>> folderGroups = {};
+    for (final file in files) {
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      if (!folderGroups.containsKey(folder)) {
+        folderGroups[folder] = [];
+      }
+      folderGroups[folder]!.add(file);
+    }
+    
+    // Sort folders by name (natural sort)
+    final sortedFolders = folderGroups.keys.toList()..sort((a, b) {
+      return _sortAscending ? _naturalCompare(a, b) : _naturalCompare(b, a);
     });
+    
+    // Sort files within each folder and build final sorted list
+    final List<dynamic> sortedFiles = [];
+    for (final folder in sortedFolders) {
+      final filesInFolder = folderGroups[folder]!;
+      // Sort files by name within the folder (natural sort)
+      filesInFolder.sort((a, b) {
+        final nameA = (a['path'] as String?)?.split('/').last ?? '';
+        final nameB = (b['path'] as String?)?.split('/').last ?? '';
+        return _sortAscending ? _naturalCompare(nameA, nameB) : _naturalCompare(nameB, nameA);
+      });
+      sortedFiles.addAll(filesInFolder);
+    }
 
-    return files;
+    return sortedFiles;
+  }
+
+  /// Natural sort comparison that handles numbers correctly.
+  int _naturalCompare(String a, String b) {
+    final RegExp numberPattern = RegExp(r'(\d+)');
+    final List<String> aParts = [];
+    final List<String> bParts = [];
+    
+    // Split strings into text and number parts
+    int aIndex = 0;
+    for (final match in numberPattern.allMatches(a)) {
+      if (match.start > aIndex) {
+        aParts.add(a.substring(aIndex, match.start));
+      }
+      aParts.add(match.group(0)!);
+      aIndex = match.end;
+    }
+    if (aIndex < a.length) {
+      aParts.add(a.substring(aIndex));
+    }
+    
+    int bIndex = 0;
+    for (final match in numberPattern.allMatches(b)) {
+      if (match.start > bIndex) {
+        bParts.add(b.substring(bIndex, match.start));
+      }
+      bParts.add(match.group(0)!);
+      bIndex = match.end;
+    }
+    if (bIndex < b.length) {
+      bParts.add(b.substring(bIndex));
+    }
+    
+    // Compare parts
+    for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      
+      // Check if both parts are numbers
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      
+      if (aNum != null && bNum != null) {
+        // Compare numerically
+        if (aNum != bNum) {
+          return aNum.compareTo(bNum);
+        }
+      } else {
+        // Compare lexicographically (case-insensitive)
+        final comparison = aPart.toLowerCase().compareTo(bPart.toLowerCase());
+        if (comparison != 0) {
+          return comparison;
+        }
+      }
+    }
+    
+    // If all parts match, compare by length
+    return aParts.length.compareTo(bParts.length);
   }
 
   Future<void> _playFile(dynamic file) async {
@@ -350,6 +433,7 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
                     onChanged: (value) {
                       setState(() {
                         _searchQuery = value;
+                        _cachedFileListItems = null; // Invalidate cache
                       });
                     },
                     style: const TextStyle(color: Colors.white),
@@ -364,6 +448,7 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
                                 _searchController.clear();
                                 setState(() {
                                   _searchQuery = '';
+                                  _cachedFileListItems = null; // Invalidate cache
                                 });
                               },
                             )
@@ -388,6 +473,7 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
                   onTap: () {
                     setState(() {
                       _sortAscending = !_sortAscending;
+                      _cachedFileListItems = null; // Invalidate cache
                     });
                   },
                   borderRadius: BorderRadius.circular(12),
@@ -541,16 +627,76 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.all(16),
-                            itemCount: _filteredAndSortedFiles.length,
+                            itemCount: _buildFileListItems().length,
                             itemBuilder: (context, index) {
-                              final file = _filteredAndSortedFiles[index];
-                              return _buildFileItem(file);
+                              return _buildFileListItems()[index];
                             },
                           ),
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildFileListItems() {
+    // Return cached list if available
+    if (_cachedFileListItems != null) {
+      return _cachedFileListItems!;
+    }
+    
+    // Build the list
+    final List<Widget> items = [];
+    String? currentFolder;
+    
+    for (int i = 0; i < _filteredAndSortedFiles.length; i++) {
+      final file = _filteredAndSortedFiles[i];
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      // Add folder header if it's a new folder
+      if (folder != currentFolder) {
+        currentFolder = folder;
+        if (folder.isNotEmpty) {
+          // Show only the last subfolder name
+          final folderName = folder.split('/').last;
+          items.add(
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.folder,
+                    color: Color(0xFF8B5CF6),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      folderName,
+                      style: const TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
+      
+      // Add file item
+      items.add(_buildFileItem(file));
+    }
+    
+    // Cache the list
+    _cachedFileListItems = items;
+    return items;
   }
 
   Widget _buildFileItem(dynamic file) {
