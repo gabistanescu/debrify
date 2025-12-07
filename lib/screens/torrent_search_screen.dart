@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/services.dart';
 import '../models/torrent.dart';
 import '../models/advanced_search_selection.dart';
@@ -83,7 +84,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
   AdvancedSearchSelection? _activeAdvancedSelection;
 
   // Sorting options
-  String _sortBy = 'relevance'; // relevance, name, size, seeders, date
+  String _sortBy = 'seeders'; // seeders, size, date, name
   bool _sortAscending = false;
   TorrentFilterState _filters = const TorrentFilterState.empty();
   bool get _hasActiveFilters => !_filters.isEmpty;
@@ -438,6 +439,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
 
   Future<void> _searchTorrents(String query) async {
     if (query.trim().isEmpty) return;
+
+    // Clear any SnackBars (like non-cached notifications) when starting new search
+    ScaffoldMessenger.of(context).clearSnackBars();
 
     final int requestId = ++_activeSearchRequestId;
     setState(() {
@@ -1090,9 +1094,12 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           return _sortAscending ? comparison : -comparison;
         });
         break;
-      case 'relevance':
       default:
-        // Keep original order (relevance maintained by search engines)
+        // Default to seeders sorting
+        sortedTorrents.sort((a, b) {
+          final comparison = a.seeders.compareTo(b.seeders);
+          return _sortAscending ? comparison : -comparison;
+        });
         break;
     }
 
@@ -2127,6 +2134,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     String torrentName,
     int index,
   ) async {
+    // Clear any existing SnackBars (like non-cached notifications)
+    ScaffoldMessenger.of(context).clearSnackBars();
+    
     // Check if API key is available
     final apiKey = await StorageService.getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
@@ -2198,14 +2208,14 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        Icons.download_rounded,
+                        Icons.cloud_sync_rounded,
                         color: Theme.of(context).colorScheme.primary,
                         size: 32,
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Adding to Real Debrid...',
+                      'Checking availability...',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.onSurface,
@@ -2237,19 +2247,43 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     );
 
     try {
+      // Just check if it would work by trying to add it
       final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+      
+      // Try to see if it's cached (will throw error if not)
       final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
 
       // Close loading dialog
       Navigator.of(context).pop();
 
-      // Handle post-torrent action
-      await _handlePostTorrentAction(result, torrentName, apiKey, index);
+      // If we got here, it's cached - delete it immediately and show options
+      final torrentId = result['torrentId']?.toString();
+      if (torrentId != null && torrentId.isNotEmpty) {
+        try {
+          await DebridService.deleteTorrent(apiKey, torrentId);
+        } catch (_) {
+          // Ignore deletion errors
+        }
+      }
+
+      // Show options dialog
+      await _showCachedTorrentOptionsDialog(infohash, torrentName, apiKey, index);
     } catch (e) {
       // Close loading dialog
       Navigator.of(context).pop();
 
-      // Show error message
+      // Check if the error is due to non-cached torrent
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('not readily available') || 
+          errorMessage.contains('file is not available') ||
+          errorMessage.contains('not cached') ||
+          errorMessage.contains('please try a different torrent')) {
+        // Show bottom sheet for non-cached torrent
+        await _showNonCachedTorrentBottomSheet(infohash, torrentName, apiKey);
+        return;
+      }
+
+      // Show error message for other errors
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -2280,6 +2314,182 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           duration: const Duration(seconds: 4),
         ),
       );
+    }
+  }
+
+  Future<void> _showNonCachedTorrentBottomSheet(
+    String infohash,
+    String torrentName,
+    String apiKey,
+  ) async {
+    // Use root ScaffoldMessenger to persist SnackBar across tab changes
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    
+    // Create a timer to auto-dismiss after 6 seconds
+    Timer? autoCloseTimer;
+    
+    final snackBar = SnackBar(
+      content: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.cloud_off, color: Colors.white, size: 16),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Torrent not cached. Add to library?',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: const Color(0xFF1E293B),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(days: 365), // Set very long duration, we'll control it manually
+      action: SnackBarAction(
+        label: 'Yes',
+        textColor: const Color(0xFF10B981),
+        onPressed: () async {
+          autoCloseTimer?.cancel(); // Cancel timer when action is pressed
+          messenger.hideCurrentSnackBar(); // Hide immediately when Yes is pressed
+          await _showNonCachedFileSelectionDialog(infohash, torrentName, apiKey);
+        },
+      ),
+    );
+    
+    messenger.showSnackBar(snackBar);
+    
+    // Auto-dismiss after 6 seconds
+    autoCloseTimer = Timer(const Duration(seconds: 6), () {
+      messenger.hideCurrentSnackBar();
+    });
+  }
+
+  Future<void> _showNonCachedFileSelectionDialog(
+    String infohash,
+    String torrentName,
+    String apiKey,
+  ) async {
+    // Show loading dialog while adding magnet
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Loading files...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      // Add magnet to Real Debrid
+      final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+      final addResult = await DebridService.addMagnet(apiKey, magnetLink);
+      final torrentId = addResult['id'] as String;
+      
+      // Get torrent info to see files
+      await Future.delayed(const Duration(seconds: 2));
+      final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
+      final files = torrentInfo['files'] as List<dynamic>;
+      
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show file selection dialog
+      if (mounted && files.isNotEmpty) {
+        await _showFileSelectionDialogForFiles(infohash, torrentName, apiKey, torrentId, files);
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading files: ${e.toString()}'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showFileSelectionDialogForFiles(
+    String infohash,
+    String torrentName,
+    String apiKey,
+    String torrentId,
+    List<dynamic> files, {
+    bool deleteOnCancel = true, // Only delete if torrent was just added (non-cached)
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // Force user to use buttons or X
+      builder: (BuildContext context) {
+        return _FileSelectionDialog(
+          infohash: infohash,
+          torrentName: torrentName,
+          apiKey: apiKey,
+          torrentId: torrentId,
+          files: files,
+        );
+      },
+    );
+    
+    // If dialog was closed without selecting files (result is null or false), delete the torrent only if it was just added
+    if (result != true && deleteOnCancel) {
+      try {
+        await DebridService.deleteTorrent(apiKey, torrentId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Torrent cancelled and removed from library'),
+              backgroundColor: const Color(0xFF6B7280),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        // Silently fail - torrent deletion is not critical
+        print('Failed to delete torrent: $e');
+      }
     }
   }
 
@@ -3854,6 +4064,133 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                         },
                       ),
                       _DebridActionTile(
+                        icon: Icons.folder_open_rounded,
+                        color: const Color(0xFFF59E0B),
+                        title: 'Add to Real Debrid',
+                        subtitle: 'Choose specific files to add to your library.',
+                        enabled: true,
+                        onTap: () async {
+                          Navigator.of(ctx).pop();
+                          final torrentId = result['torrentId']?.toString();
+                          if (torrentId == null || torrentId.isEmpty) return;
+                          
+                          // Show loading dialog
+                          if (!mounted) return;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (BuildContext context) {
+                              return Dialog(
+                                backgroundColor: const Color(0xFF1E293B),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                                      ),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'Loading files...',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                          
+                          // Poll for torrent info until files are ready
+                          try {
+                            List<dynamic>? filesList;
+                            for (int attempt = 0; attempt < 20; attempt++) {
+                              try {
+                                final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
+                                filesList = torrentInfo['files'] as List<dynamic>?;
+                                
+                                if (filesList != null && filesList.isNotEmpty) {
+                                  break; // Files are ready
+                                }
+                                
+                                // Wait before next attempt
+                                await Future.delayed(const Duration(seconds: 1));
+                              } catch (e) {
+                                // If error is 202, continue polling
+                                if (e.toString().contains('202')) {
+                                  await Future.delayed(const Duration(seconds: 1));
+                                  continue;
+                                }
+                                rethrow;
+                              }
+                            }
+                            
+                            // Close loading dialog
+                            if (mounted && Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
+                            
+                            if (filesList == null || filesList.isEmpty) {
+                              throw Exception('Files not available after waiting');
+                            }
+                            
+                            if (!mounted) return;
+                            await _showFileSelectionDialogForFiles(
+                              result['infohash']?.toString() ?? '',
+                              torrentName,
+                              apiKey,
+                              torrentId,
+                              filesList,
+                              deleteOnCancel: false, // Don't delete - torrent is already cached
+                            );
+                          } catch (e) {
+                            // Close loading dialog if still open
+                            if (mounted && Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
+                            
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF4444),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.error, color: Colors.white, size: 16),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Error loading files: ${e.toString()}',
+                                        style: const TextStyle(fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: const Color(0xFF1E293B),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                margin: const EdgeInsets.all(16),
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      _DebridActionTile(
                         icon: Icons.download_rounded,
                         color: const Color(0xFF4ADE80),
                         title: 'Download to device',
@@ -5087,19 +5424,21 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF0F172A), // Slate 900 - Deep blue-black
-            const Color(0xFF1E293B), // Slate 800 - Rich blue-grey
-            const Color(0xFF1E3A8A), // Blue 900 - Deep premium blue
-          ],
-        ),
-      ),
-      child: SafeArea(
+    return ScaffoldMessenger(
+      child: Builder(
+        builder: (context) => Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF0F172A), // Slate 900 - Deep blue-black
+                const Color(0xFF1E293B), // Slate 800 - Rich blue-grey
+                const Color(0xFF1E3A8A), // Blue 900 - Deep premium blue
+              ],
+            ),
+          ),
+          child: SafeArea(
         child: FocusTraversalGroup(
           policy: OrderedTraversalPolicy(),
           child: Column(
@@ -5683,16 +6022,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                                         },
                                         items: const [
                                           DropdownMenuItem(
-                                            value: 'relevance',
+                                            value: 'seeders',
                                             child: Text(
-                                              'Relevance',
-                                              style: TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: 'name',
-                                            child: Text(
-                                              'Name',
+                                              'Seeders',
                                               style: TextStyle(fontSize: 12),
                                             ),
                                           ),
@@ -5704,16 +6036,16 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                                             ),
                                           ),
                                           DropdownMenuItem(
-                                            value: 'seeders',
+                                            value: 'date',
                                             child: Text(
-                                              'Seeders',
+                                              'Date',
                                               style: TextStyle(fontSize: 12),
                                             ),
                                           ),
                                           DropdownMenuItem(
-                                            value: 'date',
+                                            value: 'name',
                                             child: Text(
-                                              'Date',
+                                              'Name',
                                               style: TextStyle(fontSize: 12),
                                             ),
                                           ),
@@ -5770,13 +6102,14 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                                             color: Theme.of(
                                               context,
                                             ).colorScheme.onSurfaceVariant,
-                                            size: 16,
+                                            size: 18,
                                           ),
-                                          padding: EdgeInsets.zero,
+                                          padding: const EdgeInsets.all(4),
                                           constraints: const BoxConstraints(
-                                            minWidth: 24,
-                                            minHeight: 24,
+                                            minWidth: 32,
+                                            minHeight: 32,
                                           ),
+                                          tooltip: _sortAscending ? 'Sort ascending' : 'Sort descending',
                                         ),
                                       ),
                                     ),
@@ -5929,6 +6262,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                 ),
               ),
             ],
+          ),
+        ),
           ),
         ),
       ),
@@ -6450,6 +6785,387 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
 
     return cardContent;
   }
+
+  // Show options dialog for cached torrents
+  Future<void> _showCachedTorrentOptionsDialog(
+    String infohash,
+    String torrentName,
+    String apiKey,
+    int index,
+  ) async {
+    // Capture references to state methods before entering builder
+    final stateContext = context;
+    final stateMounted = () => mounted;
+    final handlePostAction = _handlePostTorrentAction;
+    final showFileSelection = _showFileSelectionDialogForFiles;
+    final downloadFile = _downloadFile;
+    final showDownloadDialog = _showDownloadSelectionDialog;
+    
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              color: const Color(0xFF0F172A),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF6366F1),
+                                Color(0xFF8B5CF6),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.cloud_download_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                torrentName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Ready on Real-Debrid. Choose your next step.',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFF1E293B)),
+                  _DebridActionTile(
+                    icon: Icons.play_circle_rounded,
+                    color: const Color(0xFF60A5FA),
+                    title: 'Play now',
+                    subtitle: 'Add to Real-Debrid and play instantly.',
+                    enabled: true,
+                    autofocus: true,
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      // Add torrent first, then play
+                      try {
+                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
+                        if (stateMounted()) {
+                          await handlePostAction(result, torrentName, apiKey, index);
+                        }
+                      } catch (e) {
+                        if (stateMounted()) {
+                          ScaffoldMessenger.of(stateContext).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: ${e.toString()}'),
+                              backgroundColor: const Color(0xFFEF4444),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  _DebridActionTile(
+                    icon: Icons.folder_open_rounded,
+                    color: const Color(0xFFF59E0B),
+                    title: 'Add to Real Debrid',
+                    subtitle: 'Choose specific files to add to your library.',
+                    enabled: true,
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      // Add torrent and show file selection - inline implementation
+                      if (!stateMounted()) return;
+                      
+                      // Show loading
+                      showDialog(
+                        context: stateContext,
+                        barrierDismissible: false,
+                        builder: (BuildContext dialogContext) {
+                          return Dialog(
+                            backgroundColor: const Color(0xFF1E293B),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Adding to Real-Debrid...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+
+                      try {
+                        // Add magnet to Real Debrid
+                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+                        final addResult = await DebridService.addMagnet(apiKey, magnetLink);
+                        final torrentId = addResult['id'] as String;
+                        
+                        // Poll for torrent info until files are ready
+                        List<dynamic>? filesList;
+                        for (int attempt = 0; attempt < 20; attempt++) {
+                          try {
+                            final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
+                            filesList = torrentInfo['files'] as List<dynamic>?;
+                            
+                            if (filesList != null && filesList.isNotEmpty) {
+                              break; // Files are ready
+                            }
+                            
+                            await Future.delayed(const Duration(seconds: 1));
+                          } catch (e) {
+                            if (e.toString().contains('202')) {
+                              await Future.delayed(const Duration(seconds: 1));
+                              continue;
+                            }
+                            rethrow;
+                          }
+                        }
+                        
+                        // Close loading dialog
+                        if (stateMounted() && Navigator.of(stateContext).canPop()) {
+                          Navigator.of(stateContext).pop();
+                        }
+                        
+                        if (filesList == null || filesList.isEmpty) {
+                          throw Exception('Files not available after waiting');
+                        }
+                        
+                        // Show file selection dialog
+                        if (stateMounted()) {
+                          await showFileSelection(
+                            infohash,
+                            torrentName,
+                            apiKey,
+                            torrentId,
+                            filesList,
+                            deleteOnCancel: true, // Delete if user cancels since we just added it
+                          );
+                        }
+                      } catch (e) {
+                        // Close loading dialog if still open
+                        if (stateMounted() && Navigator.of(stateContext).canPop()) {
+                          Navigator.of(stateContext).pop();
+                        }
+                        
+                        if (stateMounted()) {
+                          ScaffoldMessenger.of(stateContext).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF4444),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.error, color: Colors.white, size: 16),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Error: ${e.toString()}',
+                                      style: const TextStyle(fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: const Color(0xFF1E293B),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              margin: const EdgeInsets.all(16),
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  _DebridActionTile(
+                    icon: Icons.download_rounded,
+                    color: const Color(0xFF4ADE80),
+                    title: 'Download to device',
+                    subtitle: 'Add to Real-Debrid and download files.',
+                    enabled: true,
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      // Add torrent first, then download
+                      try {
+                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
+                        
+                        // Get download link and trigger download
+                        if (stateMounted()) {
+                          final downloadLink = result['downloadLink'] as String;
+                          final links = result['links'] as List<dynamic>;
+                          if (links.length == 1) {
+                            downloadFile(downloadLink, torrentName);
+                          } else {
+                            showDownloadDialog(links, torrentName);
+                          }
+                        }
+                      } catch (e) {
+                        if (stateMounted()) {
+                          ScaffoldMessenger.of(stateContext).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: ${e.toString()}'),
+                              backgroundColor: const Color(0xFFEF4444),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  _DebridActionTile(
+                    icon: Icons.playlist_add_rounded,
+                    color: const Color(0xFFA855F7),
+                    title: 'Add to playlist',
+                    subtitle: 'Add to Real-Debrid and save to playlist.',
+                    enabled: true,
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      // Add torrent first, then add to playlist
+                      try {
+                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
+                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
+                        
+                        if (!stateMounted()) return;
+                        
+                        // Add to playlist
+                        final links = result['links'] as List<dynamic>;
+                        final torrentId = result['torrentId']?.toString() ?? '';
+                        
+                        if (links.length == 1 && torrentId.isNotEmpty) {
+                          String finalTitle = torrentName;
+                          try {
+                            final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
+                            final filename = torrentInfo['filename']?.toString();
+                            if (filename != null && filename.isNotEmpty) {
+                              finalTitle = filename;
+                            }
+                          } catch (_) {}
+
+                          final added = await StorageService.addPlaylistItemRaw({
+                            'title': finalTitle,
+                            'url': '',
+                            'restrictedLink': links[0],
+                            'rdTorrentId': torrentId,
+                            'kind': 'single',
+                          });
+                          
+                          if (stateMounted()) {
+                            ScaffoldMessenger.of(stateContext).showSnackBar(
+                              SnackBar(
+                                content: Text(added ? 'Added to playlist' : 'Already in playlist'),
+                              ),
+                            );
+                          }
+                        } else if (torrentId.isNotEmpty) {
+                          final added = await StorageService.addPlaylistItemRaw({
+                            'title': torrentName,
+                            'kind': 'collection',
+                            'rdTorrentId': torrentId,
+                            'count': links.length,
+                          });
+                          
+                          if (stateMounted()) {
+                            ScaffoldMessenger.of(stateContext).showSnackBar(
+                              SnackBar(
+                                content: Text(added ? 'Added collection to playlist' : 'Already in playlist'),
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        if (stateMounted()) {
+                          ScaffoldMessenger.of(stateContext).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: ${e.toString()}'),
+                              backgroundColor: const Color(0xFFEF4444),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _TorrentMetadata {
@@ -6610,6 +7326,395 @@ class _DebridActionTileState extends State<_DebridActionTile> {
           ),
         ),
       ),
+      ),
+    );
+  }
+}
+
+class _FileSelectionDialog extends StatefulWidget {
+  final String infohash;
+  final String torrentName;
+  final String apiKey;
+  final String torrentId;
+  final List<dynamic> files;
+
+  const _FileSelectionDialog({
+    required this.infohash,
+    required this.torrentName,
+    required this.apiKey,
+    required this.torrentId,
+    required this.files,
+  });
+
+  @override
+  State<_FileSelectionDialog> createState() => _FileSelectionDialogState();
+}
+
+class _FileSelectionDialogState extends State<_FileSelectionDialog> {
+  final Set<int> _selectedFileIds = {};
+  bool _selectAll = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Select all files by default
+    for (final file in widget.files) {
+      _selectedFileIds.add(file['id'] as int);
+    }
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectAll) {
+        _selectedFileIds.clear();
+      } else {
+        _selectedFileIds.clear();
+        for (final file in widget.files) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = !_selectAll;
+    });
+  }
+
+  void _selectOnlyVideoFiles() {
+    setState(() {
+      _selectedFileIds.clear();
+      for (final file in widget.files) {
+        final fileName = (file['name'] as String?)?.isNotEmpty == true
+            ? file['name'] as String
+            : FileUtils.getFileName(file['path'] as String? ?? '');
+        if (fileName.isNotEmpty && FileUtils.isVideoFile(fileName)) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = _selectedFileIds.length == widget.files.length;
+    });
+  }
+
+  Future<void> _addToRealDebrid() async {
+    if (_selectedFileIds.isEmpty) return;
+
+    // Save messenger before closing dialog
+    final messenger = ScaffoldMessenger.of(context);
+    
+    // Close file selection dialog first with true (files added successfully)
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
+
+    try {
+      // Select files
+      await DebridService.selectFiles(
+        widget.apiKey,
+        widget.torrentId,
+        _selectedFileIds.toList(),
+      );
+
+      // Show success message
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.download, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Torrent added! Check Real Debrid tab for progress',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      // Show error
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.error, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Failed to add torrent: ${e.toString()}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                ),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.playlist_add_check,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Select Files',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    tooltip: 'Cancel and delete torrent',
+                  ),
+                ],
+              ),
+            ),
+
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleSelectAll,
+                      icon: Icon(
+                        _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                        size: 18,
+                      ),
+                      label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectOnlyVideoFiles,
+                      icon: const Icon(Icons.movie, size: 18),
+                      label: const Text('Only Video'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF10B981),
+                        side: const BorderSide(color: Color(0xFF10B981)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Stats
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${_selectedFileIds.length} of ${widget.files.length} files selected',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Files list
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(16),
+                itemCount: widget.files.length,
+                itemBuilder: (context, index) {
+                  final file = widget.files[index];
+                  final fileId = file['id'] as int;
+                  String fileName = (file['name'] as String?)?.isNotEmpty == true
+                      ? file['name'] as String
+                      : FileUtils.getFileName(file['path'] as String? ?? '');
+                  if (fileName.isEmpty) fileName = 'Unknown';
+                  final fileSize = file['bytes'] as int? ?? 0;
+                  final isSelected = _selectedFileIds.contains(fileId);
+                  final isVideo = FileUtils.isVideoFile(fileName);
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                          : const Color(0xFF1F2937),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF6366F1)
+                            : Colors.white.withValues(alpha: 0.1),
+                        width: 2,
+                      ),
+                    ),
+                    child: CheckboxListTile(
+                      value: isSelected,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          if (value == true) {
+                            _selectedFileIds.add(fileId);
+                          } else {
+                            _selectedFileIds.remove(fileId);
+                          }
+                          _selectAll = _selectedFileIds.length == widget.files.length;
+                        });
+                      },
+                      title: Row(
+                        children: [
+                          Icon(
+                            isVideo ? Icons.movie : Icons.insert_drive_file,
+                            color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              fileName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4, left: 28),
+                        child: Text(
+                          Formatters.formatFileSize(fileSize),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      activeColor: const Color(0xFF6366F1),
+                      checkColor: Colors.white,
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Add button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Add to Real-Debrid',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

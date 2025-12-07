@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/services.dart';
 import '../models/rd_torrent.dart';
 import '../models/debrid_download.dart';
@@ -75,6 +76,9 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
   // Link input
   final TextEditingController _linkController = TextEditingController();
   bool _isAddingLink = false;
+  
+  // Auto-refresh timer for downloading torrents
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
@@ -82,6 +86,13 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     _loadApiKeyAndData();
     _torrentScrollController.addListener(_onTorrentScroll);
     _downloadScrollController.addListener(_onDownloadScroll);
+    
+    // Start auto-refresh timer for downloading torrents - only update progress
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _selectedView == _DebridDownloadsView.torrents) {
+        _updateDownloadingTorrentsProgress();
+      }
+    });
 
     // If asked to show options for a specific torrent, open after init
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -100,6 +111,124 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
         }
       }
     });
+  }
+  
+  
+  Future<void> _updateDownloadingTorrentsProgress() async {
+    // Only update progress for downloading torrents without full setState
+    final hasDownloading = _torrents.any((t) => !t.isDownloaded);
+    if (!hasDownloading || _apiKey == null) return;
+    
+    try {
+      final result = await DebridService.getTorrents(
+        _apiKey!,
+        limit: 100,
+      );
+      
+      final List<RDTorrent> freshTorrents = result['torrents'];
+      bool needsUpdate = false;
+      
+      // Update only downloading torrents in place
+      for (int i = 0; i < _torrents.length; i++) {
+        if (!_torrents[i].isDownloaded) {
+          final freshTorrent = freshTorrents.firstWhere(
+            (t) => t.id == _torrents[i].id,
+            orElse: () => _torrents[i],
+          );
+          
+          // Check if status or progress changed
+          if (freshTorrent.progress != _torrents[i].progress ||
+              freshTorrent.status != _torrents[i].status) {
+            _torrents[i] = freshTorrent;
+            needsUpdate = true;
+            
+            // Show notification if just completed
+            if (freshTorrent.status == 'downloaded' && 
+                _torrents[i].status != 'downloaded') {
+              _showTorrentCompletedNotification(freshTorrent);
+            }
+          }
+        }
+      }
+      
+      // Only call setState if something changed
+      if (needsUpdate && mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      // Silently fail - don't disturb the user
+      debugPrint('Error updating torrent progress: $e');
+    }
+  }
+  
+  void _showTorrentCompletedNotification(RDTorrent torrent) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.check_circle, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Download Complete!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    torrent.filename,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1E293B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: const Color(0xFF10B981),
+          onPressed: () {
+            // Scroll to the torrent or show options
+            _showTorrentMoreOptions(torrent);
+          },
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _refreshTorrentsIfNeeded() async {
+    // Only refresh if we have downloading torrents
+    final hasDownloading = _torrents.any((t) => !t.isDownloaded);
+    if (hasDownloading && _apiKey != null && !_isLoadingTorrents) {
+      await _fetchTorrents(_apiKey!, reset: true);
+    }
   }
 
   void _showDownloadMoreOptions(DebridDownload download) {
@@ -135,6 +264,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     _downloadScrollController.dispose();
     _magnetController.dispose();
     _linkController.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -214,11 +344,16 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
           if (reset) {
             _torrents.clear();
           }
-          // Filter to show only downloaded torrents
-          final downloadedTorrents = newTorrents
-              .where((torrent) => torrent.isDownloaded)
+          // Show both downloading and downloaded torrents
+          final activeTorrents = newTorrents
+              .where((torrent) => 
+                torrent.isDownloaded || 
+                torrent.status == 'downloading' ||
+                torrent.status == 'queued' ||
+                torrent.status == 'magnet_conversion' ||
+                torrent.status == 'waiting_files_selection')
               .toList();
-          _torrents.addAll(downloadedTorrents);
+          _torrents.addAll(activeTorrents);
           _hasMoreTorrents = hasMore;
           _torrentPage++;
           _isLoadingTorrents = false;
@@ -256,11 +391,16 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
 
       if (mounted) {
         setState(() {
-          // Filter to show only downloaded torrents
-          final downloadedTorrents = newTorrents
-              .where((torrent) => torrent.isDownloaded)
+          // Show both downloading and downloaded torrents
+          final activeTorrents = newTorrents
+              .where((torrent) => 
+                torrent.isDownloaded || 
+                torrent.status == 'downloading' ||
+                torrent.status == 'queued' ||
+                torrent.status == 'magnet_conversion' ||
+                torrent.status == 'waiting_files_selection')
               .toList();
-          _torrents.addAll(downloadedTorrents);
+          _torrents.addAll(activeTorrents);
           _hasMoreTorrents = hasMore;
           _torrentPage++;
           _isLoadingMoreTorrents = false;
@@ -1999,6 +2139,31 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     );
   }
 
+  String _getTorrentStatusMessage(RDTorrent torrent) {
+    switch (torrent.status) {
+      case 'magnet_conversion':
+        return 'Converting magnet link...';
+      case 'waiting_files_selection':
+        return 'Waiting for file selection';
+      case 'queued':
+        return 'Queued for download';
+      case 'downloading':
+        return 'Downloading... ${torrent.progress}%';
+      case 'downloaded':
+        return 'Download complete';
+      case 'error':
+        return 'Download error';
+      case 'virus':
+        return 'Virus detected';
+      case 'magnet_error':
+        return 'Magnet link error';
+      case 'dead':
+        return 'Dead torrent (no seeders)';
+      default:
+        return torrent.status;
+    }
+  }
+
   String _getUserFriendlyErrorMessage(dynamic error) {
     final errorString = error.toString().toLowerCase();
 
@@ -2554,14 +2719,78 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                     ),
                     const SizedBox(width: 8),
                     StatChip(
-                      icon: Icons.download_done,
-                      text: '100%',
-                      color: const Color(0xFF10B981),
+                      icon: torrent.isDownloaded 
+                        ? Icons.download_done 
+                        : Icons.downloading,
+                      text: '${torrent.progress}%',
+                      color: torrent.isDownloaded 
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF3B82F6),
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 12),
+                
+                // Progress bar for downloading torrents
+                if (!torrent.isDownloaded && torrent.progress < 100) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.downloading,
+                              color: const Color(0xFF60A5FA),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _getTorrentStatusMessage(torrent),
+                              style: const TextStyle(
+                                color: Color(0xFF93C5FD),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (torrent.speed != null && torrent.speed! > 0)
+                              Text(
+                                '${Formatters.formatFileSize(torrent.speed!)}/s',
+                                style: const TextStyle(
+                                  color: Color(0xFF60A5FA),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: torrent.progress / 100,
+                            backgroundColor: Colors.white.withValues(alpha: 0.1),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF3B82F6),
+                            ),
+                            minHeight: 6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 // Host info
                 Row(
