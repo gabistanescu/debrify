@@ -2208,14 +2208,14 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        Icons.cloud_sync_rounded,
+                        Icons.download_rounded,
                         color: Theme.of(context).colorScheme.primary,
                         size: 32,
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Checking availability...',
+                      'Adding to Real Debrid...',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.onSurface,
@@ -2247,27 +2247,14 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     );
 
     try {
-      // Just check if it would work by trying to add it
       final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-      
-      // Try to see if it's cached (will throw error if not)
       final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
 
       // Close loading dialog
       Navigator.of(context).pop();
 
-      // If we got here, it's cached - delete it immediately and show options
-      final torrentId = result['torrentId']?.toString();
-      if (torrentId != null && torrentId.isNotEmpty) {
-        try {
-          await DebridService.deleteTorrent(apiKey, torrentId);
-        } catch (_) {
-          // Ignore deletion errors
-        }
-      }
-
-      // Show options dialog
-      await _showCachedTorrentOptionsDialog(infohash, torrentName, apiKey, index);
+      // Handle post-torrent action
+      await _handlePostTorrentAction(result, torrentName, apiKey, index);
     } catch (e) {
       // Close loading dialog
       Navigator.of(context).pop();
@@ -2456,9 +2443,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     String torrentName,
     String apiKey,
     String torrentId,
-    List<dynamic> files, {
-    bool deleteOnCancel = true, // Only delete if torrent was just added (non-cached)
-  }) async {
+    List<dynamic> files,
+  ) async {
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false, // Force user to use buttons or X
@@ -2473,8 +2459,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       },
     );
     
-    // If dialog was closed without selecting files (result is null or false), delete the torrent only if it was just added
-    if (result != true && deleteOnCancel) {
+    // If dialog was closed without selecting files (result is null or false), delete the torrent
+    if (result != true) {
       try {
         await DebridService.deleteTorrent(apiKey, torrentId);
         if (mounted) {
@@ -4061,133 +4047,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                             fileSelection: fileSelection,
                             torrentId: result['torrentId']?.toString(),
                           );
-                        },
-                      ),
-                      _DebridActionTile(
-                        icon: Icons.folder_open_rounded,
-                        color: const Color(0xFFF59E0B),
-                        title: 'Add to Real Debrid',
-                        subtitle: 'Choose specific files to add to your library.',
-                        enabled: true,
-                        onTap: () async {
-                          Navigator.of(ctx).pop();
-                          final torrentId = result['torrentId']?.toString();
-                          if (torrentId == null || torrentId.isEmpty) return;
-                          
-                          // Show loading dialog
-                          if (!mounted) return;
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (BuildContext context) {
-                              return Dialog(
-                                backgroundColor: const Color(0xFF1E293B),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(24),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircularProgressIndicator(
-                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
-                                      ),
-                                      SizedBox(height: 16),
-                                      Text(
-                                        'Loading files...',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                          
-                          // Poll for torrent info until files are ready
-                          try {
-                            List<dynamic>? filesList;
-                            for (int attempt = 0; attempt < 20; attempt++) {
-                              try {
-                                final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
-                                filesList = torrentInfo['files'] as List<dynamic>?;
-                                
-                                if (filesList != null && filesList.isNotEmpty) {
-                                  break; // Files are ready
-                                }
-                                
-                                // Wait before next attempt
-                                await Future.delayed(const Duration(seconds: 1));
-                              } catch (e) {
-                                // If error is 202, continue polling
-                                if (e.toString().contains('202')) {
-                                  await Future.delayed(const Duration(seconds: 1));
-                                  continue;
-                                }
-                                rethrow;
-                              }
-                            }
-                            
-                            // Close loading dialog
-                            if (mounted && Navigator.of(context).canPop()) {
-                              Navigator.of(context).pop();
-                            }
-                            
-                            if (filesList == null || filesList.isEmpty) {
-                              throw Exception('Files not available after waiting');
-                            }
-                            
-                            if (!mounted) return;
-                            await _showFileSelectionDialogForFiles(
-                              result['infohash']?.toString() ?? '',
-                              torrentName,
-                              apiKey,
-                              torrentId,
-                              filesList,
-                              deleteOnCancel: false, // Don't delete - torrent is already cached
-                            );
-                          } catch (e) {
-                            // Close loading dialog if still open
-                            if (mounted && Navigator.of(context).canPop()) {
-                              Navigator.of(context).pop();
-                            }
-                            
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEF4444),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.error, color: Colors.white, size: 16),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        'Error loading files: ${e.toString()}',
-                                        style: const TextStyle(fontWeight: FontWeight.w500),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: const Color(0xFF1E293B),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                margin: const EdgeInsets.all(16),
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
-                          }
                         },
                       ),
                       _DebridActionTile(
@@ -6784,387 +6643,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     }
 
     return cardContent;
-  }
-
-  // Show options dialog for cached torrents
-  Future<void> _showCachedTorrentOptionsDialog(
-    String infohash,
-    String torrentName,
-    String apiKey,
-    int index,
-  ) async {
-    // Capture references to state methods before entering builder
-    final stateContext = context;
-    final stateMounted = () => mounted;
-    final handlePostAction = _handlePostTorrentAction;
-    final showFileSelection = _showFileSelectionDialogForFiles;
-    final downloadFile = _downloadFile;
-    final showDownloadDialog = _showDownloadSelectionDialog;
-    
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Container(
-              color: const Color(0xFF0F172A),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 42,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF6366F1),
-                                Color(0xFF8B5CF6),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.cloud_download_rounded,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                torrentName,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Ready on Real-Debrid. Choose your next step.',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            color: Colors.white54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1, color: Color(0xFF1E293B)),
-                  _DebridActionTile(
-                    icon: Icons.play_circle_rounded,
-                    color: const Color(0xFF60A5FA),
-                    title: 'Play now',
-                    subtitle: 'Add to Real-Debrid and play instantly.',
-                    enabled: true,
-                    autofocus: true,
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      // Add torrent first, then play
-                      try {
-                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
-                        if (stateMounted()) {
-                          await handlePostAction(result, torrentName, apiKey, index);
-                        }
-                      } catch (e) {
-                        if (stateMounted()) {
-                          ScaffoldMessenger.of(stateContext).showSnackBar(
-                            SnackBar(
-                              content: Text('Error: ${e.toString()}'),
-                              backgroundColor: const Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  _DebridActionTile(
-                    icon: Icons.folder_open_rounded,
-                    color: const Color(0xFFF59E0B),
-                    title: 'Add to Real Debrid',
-                    subtitle: 'Choose specific files to add to your library.',
-                    enabled: true,
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      // Add torrent and show file selection - inline implementation
-                      if (!stateMounted()) return;
-                      
-                      // Show loading
-                      showDialog(
-                        context: stateContext,
-                        barrierDismissible: false,
-                        builder: (BuildContext dialogContext) {
-                          return Dialog(
-                            backgroundColor: const Color(0xFF1E293B),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
-                                  ),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'Adding to Real-Debrid...',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-
-                      try {
-                        // Add magnet to Real Debrid
-                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-                        final addResult = await DebridService.addMagnet(apiKey, magnetLink);
-                        final torrentId = addResult['id'] as String;
-                        
-                        // Poll for torrent info until files are ready
-                        List<dynamic>? filesList;
-                        for (int attempt = 0; attempt < 20; attempt++) {
-                          try {
-                            final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
-                            filesList = torrentInfo['files'] as List<dynamic>?;
-                            
-                            if (filesList != null && filesList.isNotEmpty) {
-                              break; // Files are ready
-                            }
-                            
-                            await Future.delayed(const Duration(seconds: 1));
-                          } catch (e) {
-                            if (e.toString().contains('202')) {
-                              await Future.delayed(const Duration(seconds: 1));
-                              continue;
-                            }
-                            rethrow;
-                          }
-                        }
-                        
-                        // Close loading dialog
-                        if (stateMounted() && Navigator.of(stateContext).canPop()) {
-                          Navigator.of(stateContext).pop();
-                        }
-                        
-                        if (filesList == null || filesList.isEmpty) {
-                          throw Exception('Files not available after waiting');
-                        }
-                        
-                        // Show file selection dialog
-                        if (stateMounted()) {
-                          await showFileSelection(
-                            infohash,
-                            torrentName,
-                            apiKey,
-                            torrentId,
-                            filesList,
-                            deleteOnCancel: true, // Delete if user cancels since we just added it
-                          );
-                        }
-                      } catch (e) {
-                        // Close loading dialog if still open
-                        if (stateMounted() && Navigator.of(stateContext).canPop()) {
-                          Navigator.of(stateContext).pop();
-                        }
-                        
-                        if (stateMounted()) {
-                          ScaffoldMessenger.of(stateContext).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEF4444),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.error, color: Colors.white, size: 16),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Error: ${e.toString()}',
-                                      style: const TextStyle(fontWeight: FontWeight.w500),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              backgroundColor: const Color(0xFF1E293B),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              margin: const EdgeInsets.all(16),
-                              duration: const Duration(seconds: 4),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  _DebridActionTile(
-                    icon: Icons.download_rounded,
-                    color: const Color(0xFF4ADE80),
-                    title: 'Download to device',
-                    subtitle: 'Add to Real-Debrid and download files.',
-                    enabled: true,
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      // Add torrent first, then download
-                      try {
-                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
-                        
-                        // Get download link and trigger download
-                        if (stateMounted()) {
-                          final downloadLink = result['downloadLink'] as String;
-                          final links = result['links'] as List<dynamic>;
-                          if (links.length == 1) {
-                            downloadFile(downloadLink, torrentName);
-                          } else {
-                            showDownloadDialog(links, torrentName);
-                          }
-                        }
-                      } catch (e) {
-                        if (stateMounted()) {
-                          ScaffoldMessenger.of(stateContext).showSnackBar(
-                            SnackBar(
-                              content: Text('Error: ${e.toString()}'),
-                              backgroundColor: const Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  _DebridActionTile(
-                    icon: Icons.playlist_add_rounded,
-                    color: const Color(0xFFA855F7),
-                    title: 'Add to playlist',
-                    subtitle: 'Add to Real-Debrid and save to playlist.',
-                    enabled: true,
-                    onTap: () async {
-                      Navigator.of(ctx).pop();
-                      // Add torrent first, then add to playlist
-                      try {
-                        final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-                        final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
-                        
-                        if (!stateMounted()) return;
-                        
-                        // Add to playlist
-                        final links = result['links'] as List<dynamic>;
-                        final torrentId = result['torrentId']?.toString() ?? '';
-                        
-                        if (links.length == 1 && torrentId.isNotEmpty) {
-                          String finalTitle = torrentName;
-                          try {
-                            final torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
-                            final filename = torrentInfo['filename']?.toString();
-                            if (filename != null && filename.isNotEmpty) {
-                              finalTitle = filename;
-                            }
-                          } catch (_) {}
-
-                          final added = await StorageService.addPlaylistItemRaw({
-                            'title': finalTitle,
-                            'url': '',
-                            'restrictedLink': links[0],
-                            'rdTorrentId': torrentId,
-                            'kind': 'single',
-                          });
-                          
-                          if (stateMounted()) {
-                            ScaffoldMessenger.of(stateContext).showSnackBar(
-                              SnackBar(
-                                content: Text(added ? 'Added to playlist' : 'Already in playlist'),
-                              ),
-                            );
-                          }
-                        } else if (torrentId.isNotEmpty) {
-                          final added = await StorageService.addPlaylistItemRaw({
-                            'title': torrentName,
-                            'kind': 'collection',
-                            'rdTorrentId': torrentId,
-                            'count': links.length,
-                          });
-                          
-                          if (stateMounted()) {
-                            ScaffoldMessenger.of(stateContext).showSnackBar(
-                              SnackBar(
-                                content: Text(added ? 'Added collection to playlist' : 'Already in playlist'),
-                              ),
-                            );
-                          }
-                        }
-                      } catch (e) {
-                        if (stateMounted()) {
-                          ScaffoldMessenger.of(stateContext).showSnackBar(
-                            SnackBar(
-                              content: Text('Error: ${e.toString()}'),
-                              backgroundColor: const Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 }
 
