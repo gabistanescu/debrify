@@ -367,6 +367,9 @@ class ResponseParser {
 
         if (value != null) {
           parentData[parentField.target] = value;
+          debugPrint('ResponseParser: Parent field "${parentField.target}" = "$value" (from source: ${parentField.source})');
+        } else {
+          debugPrint('ResponseParser: Parent field "${parentField.target}" is null (source: ${parentField.source}, fallback: ${parentField.fallback})');
         }
       }
 

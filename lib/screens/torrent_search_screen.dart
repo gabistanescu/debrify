@@ -673,8 +673,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         return 'YTS';
       case 'solid_torrents':
         return 'SolidTorrents';
-      case 'torrentio':
-        return 'Torrentio';
       default:
         return name;
     }
@@ -690,8 +688,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         return 'TCSV';
       case 'solid_torrents':
         return 'ST';
-      case 'torrentio':
-        return 'TIO';
       default:
         return null;
     }
@@ -803,8 +799,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       },
       child: Tooltip(
         message: selection == null
-            ? 'Search via IMDb + Torrentio'
-            : 'Advanced Torrentio search active',
+            ? 'Search via IMDb'
+            : 'Advanced IMDb search active',
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
@@ -982,7 +978,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Need IMDb-accurate results? Use Advanced search to pull Torrentio streams via IMDb ID, seasons, and episodes.',
+              'Need IMDb-accurate results? Use Advanced search via IMDb ID, seasons, and episodes.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Colors.white.withValues(alpha: 0.8),
               ),
@@ -5529,7 +5525,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       {'key': 'pirate_bay', 'short': 'TPB', 'name': 'Pirate Bay'},
       {'key': 'yts', 'short': 'YTS', 'name': 'YTS'},
       {'key': 'solid_torrents', 'short': 'ST', 'name': 'SolidTorrents'},
-      {'key': 'torrentio', 'short': 'TIO', 'name': 'Torrentio'},
     ];
 
     for (final engine in engines) {
@@ -7405,7 +7400,6 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   final Set<int> _selectedFileIds = {};
   bool _selectAll = true;
   List<dynamic> _sortedFiles = [];
-  List<Widget>? _cachedFileListItems; // Cache for file list items
 
   @override
   void initState() {
@@ -7536,11 +7530,6 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   }
 
   List<Widget> _buildFileListItems() {
-    // Return cached list if available
-    if (_cachedFileListItems != null) {
-      return _cachedFileListItems!;
-    }
-    
     final List<Widget> items = [];
     String? currentFolder;
     
@@ -7661,8 +7650,6 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
       );
     }
     
-    // Cache the list
-    _cachedFileListItems = items;
     return items;
   }
 

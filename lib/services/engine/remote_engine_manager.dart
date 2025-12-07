@@ -47,11 +47,14 @@ class RemoteEngineManager {
       // Step 1: Get file list from GitLab API
       final fileList = await _fetchFileList();
 
-      // Step 2: Filter for .yaml files (exclude _defaults.yaml)
+      // Step 2: Filter for .yaml files (exclude _defaults.yaml and torrentio.yaml)
       final yamlFiles = fileList
-          .where((file) =>
-              file['name'].toString().endsWith('.yaml') &&
-              !file['name'].toString().startsWith('_'))
+          .where((file) {
+            final name = file['name'].toString();
+            return name.endsWith('.yaml') &&
+                !name.startsWith('_') &&
+                name != 'torrentio.yaml'; // Exclude Torrentio
+          })
           .toList();
 
       debugPrint('RemoteEngineManager: Found ${yamlFiles.length} engine files');

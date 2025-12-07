@@ -403,7 +403,16 @@ class ConfigLoader {
     fieldMappings.forEach((key, value) {
       if (value is Map<String, dynamic>) {
         final source = value['source'] as String?;
-        if (source != null) {
+        final type = value['type'] as String?;
+        
+        // Handle template type - store template string directly in fieldMapping
+        if (type == 'template') {
+          final template = value['template'] as String?;
+          if (template != null) {
+            fieldMapping[key] = template;
+            debugPrint('ConfigLoader: [$engineId] Field "$key" uses template: "$template"');
+          }
+        } else if (source != null) {
           fieldMapping[key] = source;
         }
 
@@ -469,7 +478,29 @@ class ConfigLoader {
     final preChecks = responseFormat['pre_checks'] ?? yaml['pre_checks'];
 
     // Get nested_results from either response_format section or top-level
-    final nestedResults = responseFormat['nested_results'] ?? yaml['nested_results'];
+    var nestedResults = responseFormat['nested_results'] ?? yaml['nested_results'];
+    
+    // Transform nested_results parent_fields: map 'name' to 'target'
+    if (nestedResults != null && nestedResults is Map<String, dynamic>) {
+      final parentFields = nestedResults['parent_fields'] as List<dynamic>?;
+      if (parentFields != null) {
+        debugPrint('ConfigLoader: [$engineId] Transforming ${parentFields.length} parent_fields (name → target)');
+        nestedResults = Map<String, dynamic>.from(nestedResults);
+        nestedResults['parent_fields'] = parentFields.map((field) {
+          if (field is Map<String, dynamic>) {
+            final transformed = Map<String, dynamic>.from(field);
+            // If 'name' exists but 'target' doesn't, copy 'name' to 'target'
+            if (transformed.containsKey('name') && !transformed.containsKey('target')) {
+              final name = transformed['name'];
+              transformed['target'] = name;
+              debugPrint('ConfigLoader: [$engineId] Mapped parent_field name="$name" → target="$name"');
+            }
+            return transformed;
+          }
+          return field;
+        }).toList();
+      }
+    }
 
     result['response'] = {
       'format': responseFormat['type'] ?? 'json',

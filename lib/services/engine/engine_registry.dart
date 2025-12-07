@@ -4,6 +4,7 @@ import '../../models/engine_config/engine_config.dart';
 import '../../models/engine_config/default_config.dart';
 import 'config_loader.dart';
 import 'dynamic_engine.dart';
+import 'local_engine_storage.dart';
 
 /// Singleton registry that manages all loaded search engines.
 ///
@@ -68,6 +69,11 @@ class EngineRegistry {
 
     try {
       debugPrint('EngineRegistry: Initializing...');
+
+      // Cleanup and fixes
+      final localStorage = LocalEngineStorage.instance;
+      await localStorage.removeTorrentioIfExists(); // Remove unsupported Torrentio
+      await localStorage.fixYtsDomain(); // Fix YTS domain (yts.mx → yts.lt)
 
       // Load defaults first
       _defaults = await _configLoader.getDefaults();

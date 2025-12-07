@@ -248,4 +248,73 @@ class LocalEngineStorage {
     await initialize();
     return _metadata?.isNotEmpty ?? false;
   }
+
+  /// Update YTS domain from yts.mx to yts.lt
+  /// 
+  /// This fixes the DNS resolution issue where yts.mx is no longer accessible.
+  /// yts.lt is the current official YTS domain (as of Dec 2024).
+  Future<bool> fixYtsDomain() async {
+    try {
+      await initialize();
+      
+      // Check if YTS engine exists
+      if (!(_metadata?.containsKey('yts') ?? false)) {
+        debugPrint('LocalEngineStorage: YTS engine not found, skipping domain fix');
+        return false;
+      }
+
+      final metadata = _metadata!['yts']!;
+      final filePath = '${_enginesDir!.path}/${metadata.fileName}';
+      final file = File(filePath);
+
+      if (!await file.exists()) {
+        debugPrint('LocalEngineStorage: YTS YAML file not found at $filePath');
+        return false;
+      }
+
+      // Read current content
+      String content = await file.readAsString();
+      
+      // Check if it needs updating
+      if (!content.contains('yts.mx')) {
+        debugPrint('LocalEngineStorage: YTS domain already up to date');
+        return false;
+      }
+
+      // Replace all occurrences of yts.mx with yts.lt
+      final updatedContent = content.replaceAll('yts.mx', 'yts.lt');
+      
+      // Write back to file
+      await file.writeAsString(updatedContent);
+      
+      debugPrint('LocalEngineStorage: Updated YTS domain from yts.mx to yts.lt');
+      return true;
+    } catch (e) {
+      debugPrint('LocalEngineStorage: Error fixing YTS domain: $e');
+      return false;
+    }
+  }
+
+  /// Remove Torrentio engine if it exists
+  /// 
+  /// Torrentio is not available/supported in this app.
+  /// This cleanup runs automatically on startup.
+  Future<bool> removeTorrentioIfExists() async {
+    try {
+      await initialize();
+      
+      // Check if Torrentio engine exists
+      if (!(_metadata?.containsKey('torrentio') ?? false)) {
+        return false; // Already removed or never existed
+      }
+
+      await deleteEngine('torrentio');
+      debugPrint('LocalEngineStorage: Removed Torrentio engine');
+      return true;
+    } catch (e) {
+      debugPrint('LocalEngineStorage: Error removing Torrentio: $e');
+      return false;
+    }
+  }
 }
+

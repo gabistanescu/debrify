@@ -232,6 +232,9 @@ class FieldMapper {
     final RegExp placeholderRegex = RegExp(r'\{([^}]+)\}');
     String result = template;
 
+    debugPrint('FieldMapper: Processing template: "$template"');
+    debugPrint('FieldMapper: Available data keys: ${data.keys.toList()}');
+
     for (final match in placeholderRegex.allMatches(template)) {
       final String placeholder = match.group(0)!; // e.g., {quality}
       final String fieldPath = match.group(1)!; // e.g., quality
@@ -242,9 +245,11 @@ class FieldMapper {
       if (fieldPath.startsWith('_')) {
         // _fieldName refers to a previously extracted parent field
         value = data[fieldPath];
+        debugPrint('FieldMapper: Looking for parent field "$fieldPath" in data: ${value != null ? "FOUND ($value)" : "NOT FOUND"}');
       } else {
         // Regular field path
         value = _navigatePath(data, fieldPath);
+        debugPrint('FieldMapper: Looking for field "$fieldPath" via path navigation: ${value != null ? "FOUND ($value)" : "NOT FOUND"}');
       }
 
       if (value != null) {
@@ -259,6 +264,8 @@ class FieldMapper {
     result = result.replaceAll(RegExp(r'\[\s*\]'), '');
     result = result.replaceAll(RegExp(r'\(\s*\)'), '');
     result = result.replaceAll(RegExp(r'\s+'), ' ');
+    
+    debugPrint('FieldMapper: Template result: "$result"');
     return result.trim();
   }
 
