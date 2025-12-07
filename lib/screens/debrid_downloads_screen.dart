@@ -80,6 +80,10 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
   // Auto-refresh timer for downloading torrents
   Timer? _autoRefreshTimer;
 
+  // Search functionality
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
@@ -222,6 +226,43 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
       ),
     );
   }
+
+  List<RDTorrent> get _filteredTorrents {
+    if (_searchQuery.isEmpty) {
+      return _torrents;
+    }
+    
+    return _torrents.where((torrent) {
+      final query = _searchQuery.toLowerCase();
+      final filename = torrent.filename.toLowerCase();
+      return filename.contains(query);
+    }).toList();
+  }
+  
+  List<DebridDownload> get _filteredDownloads {
+    if (_searchQuery.isEmpty) {
+      return _downloads;
+    }
+    
+    return _downloads.where((download) {
+      final query = _searchQuery.toLowerCase();
+      final filename = download.filename.toLowerCase();
+      return filename.contains(query);
+    }).toList();
+  }
+  
+  void _onSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value;
+    });
+  }
+  
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+    });
+  }
   
   Future<void> _refreshTorrentsIfNeeded() async {
     // Only refresh if we have downloading torrents
@@ -260,6 +301,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _torrentScrollController.dispose();
     _downloadScrollController.dispose();
     _magnetController.dispose();
@@ -2283,6 +2325,49 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     );
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      height: 42,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF475569).withValues(alpha: 0.3),
+        ),
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: _onSearchChanged,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Search downloads...',
+          hintStyle: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 14,
+          ),
+          prefixIcon: const Icon(
+            Icons.search,
+            color: Color(0xFF6366F1),
+            size: 20,
+          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(
+                    Icons.clear,
+                    color: Color(0xFFEF4444),
+                    size: 20,
+                  ),
+                  onPressed: _clearSearch,
+                  visualDensity: VisualDensity.compact,
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+
   Widget _buildViewSelector() {
     final theme = Theme.of(context);
     return Container(
@@ -2329,34 +2414,40 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF1F2937)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          _buildViewSelector(),
-          const Spacer(),
-          Tooltip(
-            message: 'Add magnet link',
-            child: IconButton(
-              onPressed: _showAddMagnetDialog,
-              icon: const Icon(Icons.add_circle_outline),
-              color: theme.colorScheme.primary,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Delete all torrents',
-            child: IconButton(
-              onPressed: _torrents.isEmpty ? null : _handleDeleteAllTorrents,
-              icon: const Icon(Icons.delete_sweep),
-              color: const Color(0xFFEF4444),
-              visualDensity: VisualDensity.compact,
-            ),
+          _buildSearchBar(),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildViewSelector(),
+              const Spacer(),
+              Tooltip(
+                message: 'Add magnet link',
+                child: IconButton(
+                  onPressed: _showAddMagnetDialog,
+                  icon: const Icon(Icons.add_circle_outline),
+                  color: theme.colorScheme.primary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Delete all torrents',
+                child: IconButton(
+                  onPressed: _torrents.isEmpty ? null : _handleDeleteAllTorrents,
+                  icon: const Icon(Icons.delete_sweep),
+                  color: const Color(0xFFEF4444),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2367,34 +2458,40 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF1F2937)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          _buildViewSelector(),
-          const Spacer(),
-          Tooltip(
-            message: 'Add file link',
-            child: IconButton(
-              onPressed: _showAddLinkDialog,
-              icon: const Icon(Icons.note_add_outlined),
-              color: theme.colorScheme.primary,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Delete all DDL downloads',
-            child: IconButton(
-              onPressed: _downloads.isEmpty ? null : _handleDeleteAllDownloads,
-              icon: const Icon(Icons.delete_sweep),
-              color: const Color(0xFFEF4444),
-              visualDensity: VisualDensity.compact,
-            ),
+          _buildSearchBar(),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildViewSelector(),
+              const Spacer(),
+              Tooltip(
+                message: 'Add file link',
+                child: IconButton(
+                  onPressed: _showAddLinkDialog,
+                  icon: const Icon(Icons.note_add_outlined),
+                  color: theme.colorScheme.primary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Delete all DDL downloads',
+                child: IconButton(
+                  onPressed: _downloads.isEmpty ? null : _handleDeleteAllDownloads,
+                  icon: const Icon(Icons.delete_sweep),
+                  color: const Color(0xFFEF4444),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2495,9 +2592,9 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
         child: ListView.builder(
           controller: _torrentScrollController,
           padding: const EdgeInsets.all(16),
-          itemCount: _torrents.length + (_hasMoreTorrents ? 1 : 0),
+          itemCount: _filteredTorrents.length + (_hasMoreTorrents && _searchQuery.isEmpty ? 1 : 0),
           itemBuilder: (context, index) {
-            if (index == _torrents.length) {
+            if (index == _filteredTorrents.length) {
               // Loading more indicator
               return const Padding(
                 padding: EdgeInsets.all(16),
@@ -2505,7 +2602,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
               );
             }
 
-            final torrent = _torrents[index];
+            final torrent = _filteredTorrents[index];
             return _buildTorrentCard(torrent);
           },
         ),
@@ -2614,9 +2711,9 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
         child: ListView.builder(
           controller: _downloadScrollController,
           padding: const EdgeInsets.all(16),
-          itemCount: _downloads.length + (_hasMoreDownloads ? 1 : 0),
+          itemCount: _filteredDownloads.length + (_hasMoreDownloads && _searchQuery.isEmpty ? 1 : 0),
           itemBuilder: (context, index) {
-            if (index == _downloads.length) {
+            if (index == _filteredDownloads.length) {
               // Loading more indicator
               return const Padding(
                 padding: EdgeInsets.all(16),
@@ -2624,7 +2721,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
               );
             }
 
-            final download = _downloads[index];
+            final download = _filteredDownloads[index];
             return _buildDownloadCard(download);
           },
         ),

@@ -90,6 +90,8 @@ class StorageService {
 
   static const String _playlistKey = 'user_playlist_v1';
   static const String _onboardingCompleteKey = 'initial_setup_complete_v1';
+  static const String _searchHistoryKey = 'search_history';
+  static const int _maxSearchHistoryItems = 5;
   static const int _debrifyTvRandomStartPercentDefault = 20;
   static const int _debrifyTvRandomStartPercentMin = 10;
   static const int _debrifyTvRandomStartPercentMax = 90;
@@ -1473,6 +1475,52 @@ class StorageService {
   static Future<void> clearGlobalLastPlayed() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_globalLastPlayedKey);
+  }
+
+  // Search History Methods
+  static Future<List<String>> getSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyJson = prefs.getString(_searchHistoryKey);
+    if (historyJson == null) return [];
+    
+    try {
+      final List<dynamic> decoded = json.decode(historyJson);
+      return decoded.cast<String>();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<void> addSearchToHistory(String query) async {
+    if (query.trim().isEmpty) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    List<String> history = await getSearchHistory();
+    
+    // Remove if already exists
+    history.remove(query.trim());
+    
+    // Add to beginning
+    history.insert(0, query.trim());
+    
+    // Keep only the last N items
+    if (history.length > _maxSearchHistoryItems) {
+      history = history.sublist(0, _maxSearchHistoryItems);
+    }
+    
+    await prefs.setString(_searchHistoryKey, json.encode(history));
+  }
+
+  static Future<void> removeSearchFromHistory(String query) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> history = await getSearchHistory();
+    history.remove(query);
+    await prefs.setString(_searchHistoryKey, json.encode(history));
+  }
+
+  static Future<void> clearSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_searchHistoryKey);
   }
 }
 

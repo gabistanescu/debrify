@@ -789,28 +789,9 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
             ),
             body: FadeTransition(
               opacity: _fadeAnimation,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                transitionBuilder: (child, animation) {
-                  final offsetAnimation =
-                      Tween<Offset>(
-                        begin: const Offset(0.02, 0.02),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      );
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(position: offsetAnimation, child: child),
-                  );
-                },
-                child: KeyedSubtree(
-                  key: ValueKey<int>(_selectedIndex),
-                  child: _pages[_selectedIndex],
-                ),
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: _pages,
               ),
             ),
           ),

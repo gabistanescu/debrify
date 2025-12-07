@@ -37,7 +37,7 @@ class TorrentSearchScreen extends StatefulWidget {
 }
 
 class _TorrentSearchScreenState extends State<TorrentSearchScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _providerAccordionFocusNode = FocusNode();
@@ -60,6 +60,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
   bool _isLoading = false;
   String _errorMessage = '';
   bool _hasSearched = false;
+  String _lastExecutedQuery = ''; // The query that produced current results
   int _activeSearchRequestId = 0;
   String? _apiKey;
   String? _torboxApiKey;
@@ -72,6 +73,13 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
   bool _isTelevision = false;
   final List<FocusNode> _cardFocusNodes = [];
   final List<bool> _cardFocusStates = [];
+  
+  // Search history (recent searches dropdown)
+  List<String> _searchHistory = [];
+  bool _showSearchHistory = false;
+
+  // Search navigation history (back button stack)
+  final List<_SearchState> _searchStateStack = [];
 
   // Search engine toggles - dynamic engine states
   Map<String, bool> _engineStates = {};
@@ -131,7 +139,12 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       if (!mounted) return;
       setState(() {
         _searchFocused = _searchFocusNode.hasFocus;
+        // Show search history when focused and search field is empty or has text
+        _showSearchHistory = _searchFocusNode.hasFocus && !_hasSearched;
       });
+      if (_searchFocusNode.hasFocus) {
+        _loadSearchHistory();
+      }
     });
 
     _providerAccordionFocusNode.addListener(() {
@@ -437,8 +450,43 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     super.dispose();
   }
 
+  Future<void> _loadSearchHistory() async {
+    final history = await StorageService.getSearchHistory();
+    if (mounted) {
+      setState(() {
+        _searchHistory = history;
+      });
+    }
+  }
+
   Future<void> _searchTorrents(String query) async {
     if (query.trim().isEmpty) return;
+
+    // Save current state to history stack BEFORE performing new search (only if we have a previous search)
+    if (_hasSearched) {
+      _searchStateStack.add(_SearchState(
+        searchQuery: _lastExecutedQuery, // Use the query that produced current results
+        torrents: List.from(_torrents),
+        allTorrents: List.from(_allTorrents),
+        engineCounts: Map.from(_engineCounts),
+        engineErrors: Map.from(_engineErrors),
+        torrentMetadata: Map.from(_torrentMetadata),
+        selectedEngineFilter: _selectedEngineFilter,
+        torboxCacheStatus: _torboxCacheStatus != null ? Map.from(_torboxCacheStatus!) : null,
+        showingTorboxCachedOnly: _showingTorboxCachedOnly,
+        sortBy: _sortBy,
+        sortAscending: _sortAscending,
+        filters: _filters,
+        advancedSelection: _activeAdvancedSelection,
+      ));
+    }
+
+    // Update last executed query for next back navigation
+    _lastExecutedQuery = query.trim();
+
+    // Save to search history
+    await StorageService.addSearchToHistory(query.trim());
+    await _loadSearchHistory();
 
     // Clear any SnackBars (like non-cached notifications) when starting new search
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -448,6 +496,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       _isLoading = true;
       _errorMessage = '';
       _hasSearched = true;
+      _showSearchHistory = false; // Hide history when search is performed
       _torboxCacheStatus = null;
       _showingTorboxCachedOnly = false;
       _selectedEngineFilter = null; // Reset engine filter on new search
@@ -5581,9 +5630,177 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     );
   }
 
+  Widget _buildSearchHistory() {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.history,
+                color: Color(0xFF6366F1),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Recent Searches',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () async {
+                  await StorageService.clearSearchHistory();
+                  await _loadSearchHistory();
+                },
+                child: Text(
+                  'Clear',
+                  style: TextStyle(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _searchHistory.map((query) {
+              return InkWell(
+                onTap: () {
+                  _searchController.text = query;
+                  _searchTorrents(query);
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        query,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () async {
+                          await StorageService.removeSearchFromHistory(query);
+                          await _loadSearchHistory();
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: 16,
+                          color: Colors.white.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool get wantKeepAlive => true; // Keep state alive when navigating away
+
   @override
   Widget build(BuildContext context) {
-    return ScaffoldMessenger(
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    return PopScope(
+      canPop: !_hasSearched, // Allow pop only when no search is active
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return; // If already popped, do nothing
+        
+        // If search is active, check if we have history to go back to
+        if (_hasSearched) {
+          // If we have previous searches in the stack, restore the last one
+          if (_searchStateStack.isNotEmpty) {
+            final previousState = _searchStateStack.removeLast();
+            
+            // Unfocus the search field first
+            _searchFocusNode.unfocus();
+            
+            // Force clear and update the text controller
+            _searchController.text = '';
+            
+            setState(() {
+              // Restore previous search state
+              _torrents = previousState.torrents;
+              _allTorrents = previousState.allTorrents;
+              _engineCounts = previousState.engineCounts;
+              _engineErrors = previousState.engineErrors;
+              _torrentMetadata = previousState.torrentMetadata;
+              _selectedEngineFilter = previousState.selectedEngineFilter;
+              _torboxCacheStatus = previousState.torboxCacheStatus;
+              _showingTorboxCachedOnly = previousState.showingTorboxCachedOnly;
+              _sortBy = previousState.sortBy;
+              _sortAscending = previousState.sortAscending;
+              _filters = previousState.filters;
+              _activeAdvancedSelection = previousState.advancedSelection;
+              _hasSearched = true; // Keep search state active
+            });
+            
+            // Set the text after setState with a small delay
+            Future.microtask(() {
+              if (mounted) {
+                _searchController.text = previousState.searchQuery;
+              }
+            });
+          } else {
+            // No history, go back to default screen
+            _searchFocusNode.unfocus();
+            _searchController.text = '';
+            
+            setState(() {
+              _hasSearched = false;
+              _torrents = [];
+              _allTorrents = [];
+              _engineCounts = {};
+              _engineErrors = {};
+              _torrentMetadata = {};
+              _selectedEngineFilter = null;
+              _errorMessage = '';
+              _torboxCacheStatus = null;
+              _showingTorboxCachedOnly = false;
+            });
+          }
+        }
+      },
+      child: ScaffoldMessenger(
       child: Builder(
         builder: (context) => Container(
           decoration: BoxDecoration(
@@ -5744,6 +5961,10 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                     // Search Engine Toggles
                     const SizedBox(height: 16),
                     _buildProvidersAccordion(context),
+                    
+                    // Search History
+                    if (_showSearchHistory && _searchHistory.isNotEmpty)
+                      _buildSearchHistory(),
                   ],
                 ),
               ),
@@ -6426,6 +6647,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           ),
         ),
       ),
+      ), // Close PopScope
     );
   }
 
@@ -7745,6 +7967,72 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Helper class to store search state for navigation history
+class _SearchState {
+  final String searchQuery;
+  final List<Torrent> torrents;
+  final List<Torrent> allTorrents;
+  final Map<String, int> engineCounts;
+  final Map<String, String> engineErrors;
+  final Map<String, _TorrentMetadata> torrentMetadata;
+  final String? selectedEngineFilter;
+  final Map<String, bool>? torboxCacheStatus;
+  final bool showingTorboxCachedOnly;
+  final String sortBy;
+  final bool sortAscending;
+  final TorrentFilterState filters;
+  final AdvancedSearchSelection? advancedSelection;
+
+  _SearchState({
+    required this.searchQuery,
+    required this.torrents,
+    required this.allTorrents,
+    required this.engineCounts,
+    required this.engineErrors,
+    required this.torrentMetadata,
+    required this.selectedEngineFilter,
+    required this.torboxCacheStatus,
+    required this.showingTorboxCachedOnly,
+    required this.sortBy,
+    required this.sortAscending,
+    required this.filters,
+    required this.advancedSelection,
+  });
+
+  // Create a copy of the current state
+  _SearchState copyWith({
+    String? searchQuery,
+    List<Torrent>? torrents,
+    List<Torrent>? allTorrents,
+    Map<String, int>? engineCounts,
+    Map<String, String>? engineErrors,
+    Map<String, _TorrentMetadata>? torrentMetadata,
+    String? selectedEngineFilter,
+    Map<String, bool>? torboxCacheStatus,
+    bool? showingTorboxCachedOnly,
+    String? sortBy,
+    bool? sortAscending,
+    TorrentFilterState? filters,
+    AdvancedSearchSelection? advancedSelection,
+  }) {
+    return _SearchState(
+      searchQuery: searchQuery ?? this.searchQuery,
+      torrents: torrents ?? List.from(this.torrents),
+      allTorrents: allTorrents ?? List.from(this.allTorrents),
+      engineCounts: engineCounts ?? Map.from(this.engineCounts),
+      engineErrors: engineErrors ?? Map.from(this.engineErrors),
+      torrentMetadata: torrentMetadata ?? Map.from(this.torrentMetadata),
+      selectedEngineFilter: selectedEngineFilter ?? this.selectedEngineFilter,
+      torboxCacheStatus: torboxCacheStatus ?? (this.torboxCacheStatus != null ? Map.from(this.torboxCacheStatus!) : null),
+      showingTorboxCachedOnly: showingTorboxCachedOnly ?? this.showingTorboxCachedOnly,
+      sortBy: sortBy ?? this.sortBy,
+      sortAscending: sortAscending ?? this.sortAscending,
+      filters: filters ?? this.filters,
+      advancedSelection: advancedSelection ?? this.advancedSelection,
     );
   }
 }
