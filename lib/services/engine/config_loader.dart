@@ -7,12 +7,13 @@ import 'package:yaml/yaml.dart';
 import '../../models/engine_config/engine_config.dart';
 import '../../models/engine_config/default_config.dart';
 import 'local_engine_storage.dart';
+import 'remote_engine_manager.dart';
 
 /// Service for loading and managing YAML engine configuration files.
 ///
 /// This service handles:
 /// - Loading _defaults.yaml with fallback to hardcoded defaults
-/// - Loading all engine YAML files from local storage (imported from GitLab)
+/// - Loading all engine YAML files directly from GitLab
 /// - Merging engine configs with defaults
 /// - Caching loaded configurations
 /// - Graceful error handling for invalid/missing files
@@ -28,6 +29,9 @@ class ConfigLoader {
   // Cached configs
   DefaultConfig? _defaultConfig;
   List<EngineConfig>? _engineConfigs;
+  
+  // Remote engine manager for fetching from GitLab
+  final RemoteEngineManager _remoteManager = RemoteEngineManager();
 
   /// Hardcoded fallback defaults used when _defaults.yaml is missing or invalid
   static const Map<String, dynamic> _hardcodedDefaults = {
@@ -82,42 +86,141 @@ class ConfigLoader {
     }
   }
 
-  /// Load all engine configs from local storage (imported engines)
+  /// Load all engine configs directly from GitLab
   ///
-  /// Returns a list of [EngineConfig] objects for all valid engine YAML files.
-  /// Invalid or missing files are skipped with a warning logged.
-  /// Returns an empty list if no valid engine configs are found.
+  /// Fetches engine list from GitLab, downloads each YAML file,
+  /// and merges with defaults before returning.
+  ///
+  /// Falls back to local storage if GitLab fetch fails.
+  /// Returns empty list if no engines found or all fail to load.
   Future<List<EngineConfig>> loadEngineConfigs() async {
     final configs = <EngineConfig>[];
     final defaults = await getDefaults();
-    final localStorage = LocalEngineStorage.instance;
-
-    // Get all imported engine file paths from local storage
-    final filePaths = await localStorage.getAllEngineFilePaths();
-
-    if (filePaths.isEmpty) {
-      debugPrint('ConfigLoader: No imported engines found in local storage');
-      return configs;
-    }
-
-    for (final filePath in filePaths) {
-      final config = await loadEngineConfigFromFile(filePath);
-
-      if (config != null) {
-        // Merge with defaults
-        final mergedConfig = mergeWithDefaults(config, defaults);
-        configs.add(mergedConfig);
-        debugPrint('ConfigLoader: Loaded engine config: ${config.metadata.id}');
+    
+    try {
+      debugPrint('ConfigLoader: Fetching engines from GitLab...');
+      
+      // Fetch available engines from GitLab
+      final availableEngines = await _remoteManager.fetchAvailableEngines();
+      
+      if (availableEngines.isEmpty) {
+        debugPrint('ConfigLoader: No engines found on GitLab');
+        return await _loadFromLocalStorageFallback(configs, defaults);
       }
-    }
-
-    if (configs.isEmpty) {
-      debugPrint('ConfigLoader: No valid engine configs found');
-    } else {
-      debugPrint('ConfigLoader: Loaded ${configs.length} engine configs from local storage');
+      
+      debugPrint('ConfigLoader: Found ${availableEngines.length} engines on GitLab');
+      
+      // Download and parse each engine
+      for (final engineInfo in availableEngines) {
+        try {
+          debugPrint('ConfigLoader: Downloading ${engineInfo.id} (${engineInfo.fileName})...');
+          
+          final yamlContent = await _remoteManager.downloadEngineYaml(engineInfo.fileName);
+          
+          if (yamlContent == null) {
+            debugPrint('ConfigLoader: Failed to download ${engineInfo.id} - no content');
+            continue;
+          }
+          
+          final config = await loadEngineConfigFromYaml(yamlContent, engineInfo.fileName);
+          
+          if (config != null) {
+            // Merge with defaults before adding to list
+            final mergedConfig = mergeWithDefaults(config, defaults);
+            configs.add(mergedConfig);
+            debugPrint('ConfigLoader: Successfully loaded ${engineInfo.id}');
+          } else {
+            debugPrint('ConfigLoader: Failed to parse ${engineInfo.id}');
+          }
+        } catch (e) {
+          debugPrint('ConfigLoader: Error loading ${engineInfo.id}: $e');
+          // Continue with other engines even if one fails
+        }
+      }
+      
+      debugPrint('ConfigLoader: Successfully loaded ${configs.length} engine configs from GitLab');
+      
+    } catch (e) {
+      debugPrint('ConfigLoader: Failed to fetch from GitLab: $e');
+      debugPrint('ConfigLoader: Falling back to local storage');
+      return await _loadFromLocalStorageFallback(configs, defaults);
     }
 
     return configs;
+  }
+  
+  /// Fallback method to load engines from local storage
+  Future<List<EngineConfig>> _loadFromLocalStorageFallback(
+    List<EngineConfig> configs, 
+    DefaultConfig defaults
+  ) async {
+    try {
+      final localStorage = LocalEngineStorage.instance;
+      final filePaths = await localStorage.getAllEngineFilePaths();
+      
+      if (filePaths.isEmpty) {
+        debugPrint('ConfigLoader: No imported engines found in local storage');
+        return configs;
+      }
+
+      debugPrint('ConfigLoader: Loading ${filePaths.length} engine configs from local storage');
+
+      for (final filePath in filePaths) {
+        try {
+          final config = await loadEngineConfigFromFile(filePath);
+          if (config != null) {
+            final mergedConfig = mergeWithDefaults(config, defaults);
+            configs.add(mergedConfig);
+            debugPrint('ConfigLoader: Loaded engine config: ${config.metadata.id}');
+          }
+        } catch (e) {
+          debugPrint('ConfigLoader: Error loading engine from $filePath: $e');
+        }
+      }
+
+      debugPrint('ConfigLoader: Successfully loaded ${configs.length} engine configs from local storage');
+    } catch (e) {
+      debugPrint('ConfigLoader: Local storage fallback also failed: $e');
+    }
+    
+    return configs;
+  }
+
+  /// Load a single engine config from YAML content (downloaded from GitLab)
+  ///
+  /// Returns [EngineConfig] if the YAML is valid, null otherwise.
+  Future<EngineConfig?> loadEngineConfigFromYaml(String yamlContent, String fileName) async {
+    try {
+      debugPrint('ConfigLoader: Parsing YAML from $fileName (${yamlContent.length} bytes)');
+
+      final yamlMap = loadYaml(yamlContent);
+      if (yamlMap == null) {
+        debugPrint('ConfigLoader: $fileName is empty, skipping');
+        return null;
+      }
+
+      final map = _convertYamlToMap(yamlMap);
+      debugPrint('ConfigLoader: Converted YAML to map with ${map.length} keys');
+
+      // Transform the flat YAML structure to the expected nested structure
+      final transformedMap = _transformYamlToEngineConfig(map);
+      debugPrint('ConfigLoader: Transformed map has ${transformedMap.length} sections');
+
+      final config = EngineConfig.fromMap(transformedMap);
+      debugPrint('ConfigLoader: Successfully created EngineConfig for ${config.metadata.id}');
+      return config;
+    } on YamlException catch (e) {
+      debugPrint('ConfigLoader: Invalid YAML in $fileName - $e');
+      return null;
+    } on TypeError catch (e, stackTrace) {
+      debugPrint('ConfigLoader: Type error parsing $fileName - $e');
+      debugPrint('ConfigLoader: Stack trace: $stackTrace');
+      return null;
+    } catch (e, stackTrace) {
+      debugPrint('ConfigLoader: Error parsing $fileName - $e');
+      debugPrint('ConfigLoader: Stack trace: $stackTrace');
+      return null;
+    }
   }
 
   /// Load a single engine config from a file path (local storage)

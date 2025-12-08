@@ -258,6 +258,11 @@ class TorrentService {
   }) async {
     await ensureInitialized();
 
+    debugPrint('TorrentService.searchByImdb: Starting IMDB search');
+    debugPrint('  IMDB ID: $imdbId');
+    debugPrint('  Is Movie: $isMovie');
+    debugPrint('  Season: $season, Episode: $episode');
+
     final Map<String, int> engineCounts = {};
     final Map<String, String> engineErrors = {};
 
@@ -282,14 +287,17 @@ class TorrentService {
 
       if (engineStates != null && engineStates.containsKey(engineId)) {
         isEnabled = engineStates[engineId] ?? false;
+        debugPrint('TorrentService: $engineId - enabled state from engineStates: $isEnabled');
       } else {
         final defaultEnabled =
             engine.settingsConfig.enabled?.defaultBool ?? true;
         isEnabled = await _settings.getEnabled(engineId, defaultEnabled);
+        debugPrint('TorrentService: $engineId - enabled state from settings: $isEnabled (default: $defaultEnabled)');
       }
 
       if (isEnabled) {
         selectedEngines.add(engine);
+        debugPrint('TorrentService: $engineId - added to selected engines for IMDB search');
       }
     }
 
@@ -301,6 +309,8 @@ class TorrentService {
         'engineErrors': engineErrors,
       };
     }
+
+    debugPrint('TorrentService: Starting IMDB search with ${selectedEngines.length} engines: ${selectedEngines.map((e) => e.name).join(", ")}');
 
     // Search all selected engines in parallel
     final List<Future<List<Torrent>>> futures = [];

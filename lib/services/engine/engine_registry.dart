@@ -72,7 +72,6 @@ class EngineRegistry {
 
       // Cleanup and fixes
       final localStorage = LocalEngineStorage.instance;
-      await localStorage.removeTorrentioIfExists(); // Remove unsupported Torrentio
       await localStorage.fixYtsDomain(); // Fix YTS domain (yts.mx → yts.lt)
 
       // Load defaults first
@@ -152,30 +151,46 @@ class EngineRegistry {
   ///
   /// Returns engines where metadata.capabilities.keywordSearch is true.
   List<DynamicEngine> getKeywordSearchEngines() {
-    if (!_initialized) return [];
+    if (!_initialized) {
+      debugPrint('EngineRegistry: Not initialized, returning empty list');
+      return [];
+    }
 
-    return _engines.entries
+    final engines = _engines.entries
         .where((entry) {
           final config = _configs[entry.key];
-          return config?.metadata.capabilities.keywordSearch ?? false;
+          final hasCapability = config?.metadata.capabilities.keywordSearch ?? false;
+          debugPrint('EngineRegistry: ${entry.key} - keywordSearch capability: $hasCapability');
+          return hasCapability;
         })
         .map((entry) => entry.value)
         .toList();
+    
+    debugPrint('EngineRegistry: Found ${engines.length} keyword search engines: ${engines.map((e) => e.name).join(", ")}');
+    return engines;
   }
 
   /// Get all engines that support IMDB search.
   ///
   /// Returns engines where metadata.capabilities.imdbSearch is true.
   List<DynamicEngine> getImdbSearchEngines() {
-    if (!_initialized) return [];
+    if (!_initialized) {
+      debugPrint('EngineRegistry: Not initialized, returning empty list for IMDB search');
+      return [];
+    }
 
-    return _engines.entries
+    final engines = _engines.entries
         .where((entry) {
           final config = _configs[entry.key];
-          return config?.metadata.capabilities.imdbSearch ?? false;
+          final hasCapability = config?.metadata.capabilities.imdbSearch ?? false;
+          debugPrint('EngineRegistry: ${entry.key} - imdbSearch capability: $hasCapability');
+          return hasCapability;
         })
         .map((entry) => entry.value)
         .toList();
+    
+    debugPrint('EngineRegistry: Found ${engines.length} IMDB search engines: ${engines.map((e) => e.name).join(", ")}');
+    return engines;
   }
 
   /// Get all engines that support series/TV show search.

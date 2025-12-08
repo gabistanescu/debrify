@@ -25,15 +25,15 @@ class RemoteEngineInfo {
 
 /// Manages fetching engine configurations from remote GitLab repository
 class RemoteEngineManager {
-  static const String _gitlabProject = 'mediacontent%2Fsearch-engines';
-  static const String _branch = 'main';
+  static const String _gitlabProject = 'gabistanescu9%2Fsearch-engines';
+  static const String _branch = 'patch-1';
   static const String _enginePath = 'torrents';
 
   /// GitLab API URL to list files in the torrents directory
   static const String _apiBaseUrl = 'https://gitlab.com/api/v4/projects';
 
   /// Raw file URL for downloading YAML content
-  static const String _rawBaseUrl = 'https://gitlab.com/mediacontent/search-engines/-/raw';
+  static const String _rawBaseUrl = 'https://gitlab.com/gabistanescu9/search-engines/-/raw';
 
   final http.Client _client;
 
@@ -47,13 +47,13 @@ class RemoteEngineManager {
       // Step 1: Get file list from GitLab API
       final fileList = await _fetchFileList();
 
-      // Step 2: Filter for .yaml files (exclude _defaults.yaml and torrentio.yaml)
+      // Step 2: Filter for .yaml files (exclude _defaults.yaml and metadata.yaml)
       final yamlFiles = fileList
           .where((file) {
             final name = file['name'].toString();
             return name.endsWith('.yaml') &&
                 !name.startsWith('_') &&
-                name != 'torrentio.yaml'; // Exclude Torrentio
+                name != 'metadata.yaml';
           })
           .toList();
 

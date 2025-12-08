@@ -673,6 +673,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         return 'YTS';
       case 'solid_torrents':
         return 'SolidTorrents';
+      case 'torrentio':
+        return 'Torrentio';
       default:
         return name;
     }
@@ -688,6 +690,8 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         return 'TCSV';
       case 'solid_torrents':
         return 'ST';
+      case 'torrentio':
+        return 'TIO';
       default:
         return null;
     }
@@ -5523,6 +5527,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     final engines = [
       {'key': 'torrents_csv', 'short': 'TCSV', 'name': 'Torrents CSV'},
       {'key': 'pirate_bay', 'short': 'TPB', 'name': 'Pirate Bay'},
+      {'key': 'torrentio', 'short': 'TIO', 'name': 'Torrentio'},
       {'key': 'yts', 'short': 'YTS', 'name': 'YTS'},
       {'key': 'solid_torrents', 'short': 'ST', 'name': 'SolidTorrents'},
     ];
