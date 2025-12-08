@@ -248,6 +248,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   _AspectMode _aspectMode = _AspectMode.contain;
   double _playbackSpeed = 1.0;
 
+  // Video rotation (in degrees: 0, 90, 180, 270)
+  int _videoRotation = 0;
+  bool _isVerticalVideo = false; // True if aspect ratio < 1
+
   // Orientation
   bool _landscapeLocked = false;
 
@@ -612,6 +616,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         });
       }
     }
+  }
+
+
+  /// Toggle video rotation between 0° (horizontal) and 270° (vertical portrait)
+  void _rotateVideo() {
+    if (!mounted) return;
+    
+    // Toggle between 0° and 270° only
+    final newRotation = _videoRotation == 0 ? 270 : 0;
+    debugPrint('VideoPlayer: Manual rotation to $newRotation°');
+    
+    // Use post-frame callback to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _videoRotation = newRotation;
+        });
+      }
+    });
   }
 
   // Wait for the video to be ready and duration to be available
@@ -2563,19 +2586,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
   }
 
-  // Build video with custom aspect ratio
+  // Build video with rotation and optional custom aspect ratio
+  Widget _buildRotatedVideo() {
+    return _buildCustomAspectRatioVideo();
+  }
+
+  // Build video with custom aspect ratio (legacy method kept for compatibility)
   Widget _buildCustomAspectRatioVideo() {
     final aspectRatio = _getCustomAspectRatio();
     if (aspectRatio == null) {
-      // No forced aspect ratio; let the Video widget scale internally
       return mkv.Video(
         controller: _videoController,
         controls: null,
         fit: _currentFit(),
       );
     }
-
-    // Forced aspect ratio: center the constrained box and let Video cover inside it
     return Center(
       child: AspectRatio(
         aspectRatio: aspectRatio,
@@ -3449,273 +3474,319 @@ Future<Set<int>> _getFinishedEpisodesForSimplePlaylist() async {
             }
             return KeyEventResult.ignored;
           },
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Video texture (media_kit renderer)
-              if (isReady && !_isTransitioning)
-                _getCustomAspectRatio() != null
-                    ? _buildCustomAspectRatioVideo()
-                    : mkv.Video(
-                        controller: _videoController,
-                        controls: null,
-                        fit: _currentFit(),
-                      )
-              else if (_isTransitioning)
-                // Black screen during transitions to hide previous frame
-                Container(color: Colors.black)
-              else
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              // Transition overlay above video
-              if (_rainbowActive) _buildTransitionOverlay(),
-              // Double-tap ripple
-              if (_ripple != null)
-                IgnorePointer(
-                  child: CustomPaint(
-                    painter: _DoubleTapRipplePainter(_ripple!),
-                  ),
-                ),
-              // HUDs
-              ValueListenableBuilder<_SeekHudState?>(
-                valueListenable: _seekHud,
-                builder: (context, hud, _) {
-                  return IgnorePointer(
-                    ignoring: true,
-                    child: AnimatedOpacity(
-                      opacity: hud == null ? 0 : 1,
-                      duration: const Duration(milliseconds: 120),
-                      child: Center(
-                        child: hud == null
-                            ? const SizedBox.shrink()
-                            : _SeekHud(hud: hud, format: _format),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ValueListenableBuilder<_VerticalHudState?>(
-                valueListenable: _verticalHud,
-                builder: (context, hud, _) {
-                  return IgnorePointer(
-                    ignoring: true,
-                    child: AnimatedOpacity(
-                      opacity: hud == null ? 0 : 1,
-                      duration: const Duration(milliseconds: 120),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 24),
-                          child: hud == null
-                              ? const SizedBox.shrink()
-                              : _VerticalHud(hud: hud),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ValueListenableBuilder<_AspectRatioHudState?>(
-                valueListenable: _aspectRatioHud,
-                builder: (context, hud, _) {
-                  return IgnorePointer(
-                    ignoring: true,
-                    child: AnimatedOpacity(
-                      opacity: hud == null ? 0 : 1,
-                      duration: const Duration(milliseconds: 200),
-                      child: Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 80, right: 24),
-                          child: hud == null
-                              ? const SizedBox.shrink()
-                              : _AspectRatioHud(hud: hud),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              // Full-screen gesture layer (placed below controls)
-              GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTapDown: (d) => _lastTapLocal = d.localPosition,
-                onTap: () {
-                  // Disable single tap when both back button and options are hidden
-                  if (widget.hideBackButton && widget.hideOptions) {
-                    return;
-                  }
-                  final box = context.findRenderObject() as RenderBox?;
-                  if (box == null) return;
-                  final size = box.size;
-                  final pos = _lastTapLocal ?? Offset.zero;
-                  if (_shouldToggleForTap(
-                    pos,
-                    size,
-                    controlsVisible: _controlsVisible.value,
-                  )) {
-                    _toggleControls();
-                  }
-                },
-                onDoubleTapDown: _handleDoubleTap,
-                onPanStart: _onPanStart,
-                onPanUpdate: _onPanUpdate,
-                onPanEnd: _onPanEnd,
-              ),
-              // Controls overlay (shown only when ready)
-              if (isReady)
-                ValueListenableBuilder<bool>(
-                  valueListenable: _controlsVisible,
-                  builder: (context, visible, _) {
-                    return AnimatedOpacity(
-                      opacity: visible ? 1 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: IgnorePointer(
-                        ignoring: !visible,
-                        child: _Controls(
-                          title: widget.showVideoTitle && !widget.showChannelName
-                              ? _getCurrentEpisodeTitle()
-                              : '',
-                          subtitle: widget.showVideoTitle && !widget.showChannelName
-                              ? _getCurrentEpisodeSubtitle()
-                              : null,
-                          enhancedMetadata: _getEnhancedMetadata(),
-                          duration: duration,
-                          position: pos,
-                          isPlaying: _isPlaying,
-                          isReady: isReady,
-                          onPlayPause: _togglePlay,
-                          onBack: () => Navigator.of(context).pop(),
-                          onAspect: _cycleAspectMode,
-                          onSpeed: _changeSpeed,
-                          speed: _playbackSpeed,
-                          aspectMode: _aspectMode,
-                          isLandscape: _landscapeLocked,
-                          onRotate: _toggleOrientation,
-                          hasPlaylist:
-                              widget.playlist != null &&
-                              widget.playlist!.isNotEmpty,
-                          onShowPlaylist: () => _showPlaylistSheet(context),
-                          onShowTracks: () => _showTracksSheet(context),
-                          onSeekBarChangedStart: () {
-                            _isSeekingWithSlider = true;
-                          },
-                          onSeekBarChanged: (v) {
-                            final newPos = duration * v;
-                            _player.seek(newPos);
-                          },
-                          onSeekBarChangeEnd: () {
-                            _isSeekingWithSlider = false;
-                            _scheduleAutoHide();
-                          },
-                          onNext:
-                              (_hasNextEpisode() ||
-                                  widget.requestMagicNext != null)
-                              ? _goToNextEpisode
-                              : null,
-                          onNextChannel:
-                              widget.requestNextChannel != null
-                                  ? _goToNextChannel
-                                  : null,
-                          onPrevious: _hasPreviousEpisode()
-                              ? _goToPreviousEpisode
-                              : null,
-                          hasNext:
-                              _hasNextEpisode() ||
-                              widget.requestMagicNext != null,
-                          hasNextChannel: widget.requestNextChannel != null,
-                          hasPrevious: _hasPreviousEpisode(),
-                          hideSeekbar: widget.hideSeekbar,
-                          hideOptions: widget.hideOptions,
-                          hideBackButton: widget.hideBackButton,
-                          onRandom: _playRandom,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              // Title Badge with Glassy Blur Effect (top-left, Debrify TV only)
-              // Placed after controls to appear on top
-              if (widget.showVideoTitle && widget.showChannelName)
-                Positioned(
-                  top: 20,
-                  left: 20,
-                  child: IgnorePointer(
-                    ignoring: true,
-                    child: AnimatedOpacity(
-                      opacity: _showTitleBadge ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeInOut,
-                      child: _buildTitleBadge(_getCurrentEpisodeTitle()),
-                    ),
-                  ),
-                ),
-              // Channel Badge with Glassy Blur Effect (top-right)
-              // Placed after controls to appear on top
-              if (widget.showChannelName &&
-                  channelBadgeText != null &&
-                  channelBadgeText.isNotEmpty)
-                Positioned(
-                  top: 20,
-                  right: 20,
-                  child: IgnorePointer(
-                    ignoring: true,
-                    child: AnimatedOpacity(
-                      opacity: _showChannelBadge ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeInOut,
-                      child: _buildChannelBadge(channelBadgeText),
-                    ),
-                  ),
-                ),
-              // PikPak retry overlay - non-blocking, positioned at bottom right
-              if (_isPikPakRetrying && _pikPakRetryMessage != null)
-                Positioned(
-                  bottom: 80,
-                  right: 20,
-                  child: IgnorePointer(
-                    ignoring: false,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.75),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _pikPakRetryMessage!,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          child: _videoRotation != 0 
+              ? _buildRotatedPlayerUI(isReady, pos, duration, channelBadgeText)
+              : _buildPlayerUI(isReady, pos, duration, channelBadgeText),
         ),
       ),
     );
+  }
+
+  // Build the entire player UI (video + overlays + controls) without rotation
+  Widget _buildPlayerUI(bool isReady, Duration pos, Duration duration, String? channelBadgeText) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Video texture (media_kit renderer)
+        if (isReady && !_isTransitioning)
+          _getCustomAspectRatio() != null
+              ? _buildCustomAspectRatioVideo()
+              : mkv.Video(
+                  controller: _videoController,
+                  controls: null,
+                  fit: _currentFit(),
+                )
+        else if (_isTransitioning)
+          // Black screen during transitions to hide previous frame
+          Container(color: Colors.black)
+        else
+          const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+        ..._buildOverlayWidgets(isReady, pos, duration, channelBadgeText),
+      ],
+    );
+  }
+
+  // Build the entire player UI with rotation applied
+  Widget _buildRotatedPlayerUI(bool isReady, Duration pos, Duration duration, String? channelBadgeText) {
+    final quarterTurns = _videoRotation ~/ 90;
+    
+    return RotatedBox(
+      quarterTurns: quarterTurns,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Video texture (media_kit renderer)
+          if (isReady && !_isTransitioning)
+            _getCustomAspectRatio() != null
+                ? _buildCustomAspectRatioVideo()
+                : mkv.Video(
+                    controller: _videoController,
+                    controls: null,
+                    fit: _currentFit(),
+                  )
+          else if (_isTransitioning)
+            // Black screen during transitions to hide previous frame
+            Container(color: Colors.black)
+          else
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          ..._buildOverlayWidgets(isReady, pos, duration, channelBadgeText),
+        ],
+      ),
+    );
+  }
+
+  // Build all overlay widgets (controls, HUDs, badges, etc.)
+  List<Widget> _buildOverlayWidgets(bool isReady, Duration pos, Duration duration, String? channelBadgeText) {
+    return [
+      // Transition overlay above video
+      if (_rainbowActive) _buildTransitionOverlay(),
+      // Double-tap ripple
+      if (_ripple != null)
+        IgnorePointer(
+          child: CustomPaint(
+            painter: _DoubleTapRipplePainter(_ripple!),
+          ),
+        ),
+      // HUDs
+      ValueListenableBuilder<_SeekHudState?>(
+        valueListenable: _seekHud,
+        builder: (context, hud, _) {
+          return IgnorePointer(
+            ignoring: true,
+            child: AnimatedOpacity(
+              opacity: hud == null ? 0 : 1,
+              duration: const Duration(milliseconds: 120),
+              child: Center(
+                child: hud == null
+                    ? const SizedBox.shrink()
+                    : _SeekHud(hud: hud, format: _format),
+              ),
+            ),
+          );
+        },
+      ),
+      ValueListenableBuilder<_VerticalHudState?>(
+        valueListenable: _verticalHud,
+        builder: (context, hud, _) {
+          return IgnorePointer(
+            ignoring: true,
+            child: AnimatedOpacity(
+              opacity: hud == null ? 0 : 1,
+              duration: const Duration(milliseconds: 120),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 24),
+                  child: hud == null
+                      ? const SizedBox.shrink()
+                      : _VerticalHud(hud: hud),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+      ValueListenableBuilder<_AspectRatioHudState?>(
+        valueListenable: _aspectRatioHud,
+        builder: (context, hud, _) {
+          return IgnorePointer(
+            ignoring: true,
+            child: AnimatedOpacity(
+              opacity: hud == null ? 0 : 1,
+              duration: const Duration(milliseconds: 200),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 80, right: 24),
+                  child: hud == null
+                      ? const SizedBox.shrink()
+                      : _AspectRatioHud(hud: hud),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+      // Full-screen gesture layer (placed below controls)
+      GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (d) => _lastTapLocal = d.localPosition,
+        onTap: () {
+          // Disable single tap when both back button and options are hidden
+          if (widget.hideBackButton && widget.hideOptions) {
+            return;
+          }
+          final box = context.findRenderObject() as RenderBox?;
+          if (box == null) return;
+          final size = box.size;
+          final pos = _lastTapLocal ?? Offset.zero;
+          if (_shouldToggleForTap(
+            pos,
+            size,
+            controlsVisible: _controlsVisible.value,
+          )) {
+            _toggleControls();
+          }
+        },
+        onDoubleTapDown: _handleDoubleTap,
+        onPanStart: _onPanStart,
+        onPanUpdate: _onPanUpdate,
+        onPanEnd: _onPanEnd,
+      ),
+      // Controls overlay (shown only when ready)
+      if (isReady)
+        ValueListenableBuilder<bool>(
+          valueListenable: _controlsVisible,
+          builder: (context, visible, _) {
+            return AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: IgnorePointer(
+                ignoring: !visible,
+                child: _Controls(
+                  title: widget.showVideoTitle && !widget.showChannelName
+                      ? _getCurrentEpisodeTitle()
+                      : '',
+                  subtitle: widget.showVideoTitle && !widget.showChannelName
+                      ? _getCurrentEpisodeSubtitle()
+                      : null,
+                  enhancedMetadata: _getEnhancedMetadata(),
+                  duration: duration,
+                  position: pos,
+                  isPlaying: _isPlaying,
+                  isReady: isReady,
+                  onPlayPause: _togglePlay,
+                  onBack: () => Navigator.of(context).pop(),
+                  onAspect: _cycleAspectMode,
+                  onSpeed: _changeSpeed,
+                  speed: _playbackSpeed,
+                  aspectMode: _aspectMode,
+                  isLandscape: _landscapeLocked,
+                  onRotate: _toggleOrientation,
+                  hasPlaylist:
+                      widget.playlist != null &&
+                      widget.playlist!.isNotEmpty,
+                  onShowPlaylist: () => _showPlaylistSheet(context),
+                  onShowTracks: () => _showTracksSheet(context),
+                  onSeekBarChangedStart: () {
+                    _isSeekingWithSlider = true;
+                  },
+                  onSeekBarChanged: (v) {
+                    final newPos = duration * v;
+                    _player.seek(newPos);
+                  },
+                  onSeekBarChangeEnd: () {
+                    _isSeekingWithSlider = false;
+                    _scheduleAutoHide();
+                  },
+                  onNext:
+                      (_hasNextEpisode() ||
+                          widget.requestMagicNext != null)
+                      ? _goToNextEpisode
+                      : null,
+                  onNextChannel:
+                      widget.requestNextChannel != null
+                          ? _goToNextChannel
+                          : null,
+                  onPrevious: _hasPreviousEpisode()
+                      ? _goToPreviousEpisode
+                      : null,
+                  hasNext:
+                      _hasNextEpisode() ||
+                      widget.requestMagicNext != null,
+                  hasNextChannel: widget.requestNextChannel != null,
+                  hasPrevious: _hasPreviousEpisode(),
+                  hideSeekbar: widget.hideSeekbar,
+                  hideOptions: widget.hideOptions,
+                  hideBackButton: widget.hideBackButton,
+                  onRandom: _playRandom,
+                  onRotateVideo: _rotateVideo, // Manual video rotation
+                ),
+              ),
+            );
+          },
+        ),
+      // Title Badge with Glassy Blur Effect (top-left, Debrify TV only)
+      // Placed after controls to appear on top
+      if (widget.showVideoTitle && widget.showChannelName)
+        Positioned(
+          top: 20,
+          left: 20,
+          child: IgnorePointer(
+            ignoring: true,
+            child: AnimatedOpacity(
+              opacity: _showTitleBadge ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              child: _buildTitleBadge(_getCurrentEpisodeTitle()),
+            ),
+          ),
+        ),
+      // Channel Badge with Glassy Blur Effect (top-right)
+      // Placed after controls to appear on top
+      if (widget.showChannelName &&
+          channelBadgeText != null &&
+          channelBadgeText.isNotEmpty)
+        Positioned(
+          top: 20,
+          right: 20,
+          child: IgnorePointer(
+            ignoring: true,
+            child: AnimatedOpacity(
+              opacity: _showChannelBadge ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              child: _buildChannelBadge(channelBadgeText),
+            ),
+          ),
+        ),
+      // PikPak retry overlay - non-blocking, positioned at bottom right
+      if (_isPikPakRetrying && _pikPakRetryMessage != null)
+        Positioned(
+          bottom: 80,
+          right: 20,
+          child: IgnorePointer(
+            ignoring: false,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.75),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _pikPakRetryMessage!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+    ];
   }
 }
 
@@ -3751,6 +3822,7 @@ class _Controls extends StatelessWidget {
   final bool hideOptions;
   final bool hideBackButton;
   final VoidCallback onRandom;
+  final VoidCallback onRotateVideo; // Manual video rotation callback
 
   const _Controls({
     required this.title,
@@ -3784,6 +3856,7 @@ class _Controls extends StatelessWidget {
     required this.hideOptions,
     required this.hideBackButton,
     required this.onRandom,
+    required this.onRotateVideo, // Manual video rotation callback
   });
 
   String _getAspectRatioName() {
@@ -4077,6 +4150,14 @@ class _Controls extends StatelessWidget {
                               icon: Icons.aspect_ratio_rounded,
                               label: _getAspectRatioName(),
                               onPressed: onAspect,
+                              isCompact: true,
+                            ),
+
+                            // Video rotation button
+                            _NetflixControlButton(
+                              icon: Icons.screen_rotation_rounded,
+                              label: 'Rotate',
+                              onPressed: onRotateVideo,
                               isCompact: true,
                             ),
 
