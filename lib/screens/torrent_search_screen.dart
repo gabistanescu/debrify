@@ -5820,9 +5820,11 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           child: Column(
             children: [
               // Search Box
-              Container(
-                margin: const EdgeInsets.all(8),
-                padding: const EdgeInsets.all(12),
+              Flexible(
+                flex: 0,
+                child: Container(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -5967,6 +5969,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                       _buildSearchHistory(),
                   ],
                 ),
+              ),
               ),
 
               // Content Section

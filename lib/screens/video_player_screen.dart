@@ -1793,7 +1793,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _titleBadgeTimer?.cancel();
     _transitionStopTimer?.cancel();
     
-    // Cancel all subscriptions BEFORE touching the player
+    // CRITICAL: Stop player FIRST before cancelling subscriptions
+    // This prevents the player from sending events to already-deleted callbacks
+    try {
+      _player.pause();
+      _player.stop();
+      // Note: We intentionally do NOT call _player.dispose() here
+      // The native mpv callbacks continue running after dispose(), causing crashes
+      // Let the garbage collector clean up when it's safe
+    } catch (e) {
+      debugPrint('Error stopping player: $e');
+    }
+    
+    // NOW cancel all subscriptions (after player is stopped and won't send more events)
     _posSub?.cancel();
     _posSub = null;
     _durSub?.cancel();
@@ -1804,17 +1816,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _paramsSub = null;
     _completedSub?.cancel();
     _completedSub = null;
-    
-    // Stop player but DON'T dispose - let GC handle it to avoid native callback crash
-    try {
-      _player.pause();
-      _player.stop();
-      // Note: We intentionally do NOT call _player.dispose() here
-      // The native mpv callbacks continue running after dispose(), causing crashes
-      // Let the garbage collector clean up when it's safe
-    } catch (e) {
-      debugPrint('Error stopping player: $e');
-    }
     
     // Dispose other resources
     _controlsVisible.dispose();

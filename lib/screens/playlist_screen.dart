@@ -50,6 +50,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       });
     _detectTelevision();
     _loadGlobalLastPlayed();
+    
+    // Listen for playlist changes from other screens
+    StorageService.playlistChanged.addListener(_onPlaylistChanged);
   }
 
   Future<void> _loadGlobalLastPlayed() async {
@@ -80,6 +83,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       _loader = StorageService.getPlaylistItemsRaw();
     });
     await _loadGlobalLastPlayed();
+  }
+
+  void _onPlaylistChanged() {
+    // Called when playlist is modified from other screens
+    if (mounted) {
+      _refresh();
+    }
   }
 
   Future<void> _continueLastPlayed() async {
@@ -133,6 +143,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     _searchController.removeListener(_handleSearchChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
+    StorageService.playlistChanged.removeListener(_onPlaylistChanged);
     super.dispose();
   }
 
