@@ -328,6 +328,7 @@ class TorrentService {
           imdbId: imdbId,
           season: (!isMovie && engine.supportsSeriesSearch) ? season : null,
           episode: (!isMovie && engine.supportsSeriesSearch) ? episode : null,
+          isMovie: isMovie,
           maxResults: maxResults,
         ).then((results) {
           engineCounts[engineId] = results.length;

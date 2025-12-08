@@ -245,12 +245,16 @@ class EngineExecutor {
 
     final Map<String, String>? urls = config.urls;
 
+    debugPrint('EngineExecutor.getBaseUrl: imdbId=$imdbId, season=$season, episode=$episode, query=$query');
+    debugPrint('EngineExecutor.getBaseUrl: Available URLs: ${urls?.keys.join(", ")}');
+
     // Check for series URL
     if (urls != null &&
         imdbId != null &&
         imdbId.isNotEmpty &&
         (season != null || episode != null)) {
       if (urls.containsKey('series') && urls['series']!.isNotEmpty) {
+        debugPrint('EngineExecutor.getBaseUrl: Using series URL: ${urls['series']}');
         return urls['series']!;
       }
       // Fall through to imdb URL
@@ -259,18 +263,26 @@ class EngineExecutor {
     // Check for IMDB URL
     if (urls != null && imdbId != null && imdbId.isNotEmpty) {
       if (urls.containsKey('imdb') && urls['imdb']!.isNotEmpty) {
+        debugPrint('EngineExecutor.getBaseUrl: Using imdb URL: ${urls['imdb']}');
         return urls['imdb']!;
+      }
+      // Check for movie URL
+      if (urls.containsKey('movie') && urls['movie']!.isNotEmpty) {
+        debugPrint('EngineExecutor.getBaseUrl: Using movie URL: ${urls['movie']}');
+        return urls['movie']!;
       }
     }
 
     // Check for keyword URL
     if (urls != null && query != null && query.isNotEmpty) {
       if (urls.containsKey('keyword') && urls['keyword']!.isNotEmpty) {
+        debugPrint('EngineExecutor.getBaseUrl: Using keyword URL: ${urls['keyword']}');
         return urls['keyword']!;
       }
     }
 
     // Default to base URL
+    debugPrint('EngineExecutor.getBaseUrl: Using default baseUrl: ${config.baseUrl}');
     return config.baseUrl ?? '';
   }
 

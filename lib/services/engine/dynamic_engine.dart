@@ -309,6 +309,7 @@ class DynamicEngine extends SearchEngine {
     String? imdbId,
     int? season,
     int? episode,
+    bool? isMovie,
     int? maxResults,
     Duration? betweenPageRequests,
   }) async {
@@ -322,9 +323,10 @@ class DynamicEngine extends SearchEngine {
     }
 
     // Check if this is a series search that needs season probing
-    // Conditions: has IMDB, no season specified, supports series, has series_config
+    // Conditions: has IMDB, no season specified, is NOT a movie, supports series, has series_config
     if (normalizedImdbId != null &&
         season == null &&
+        isMovie != true &&
         supportsSeriesSearch &&
         config.request.seriesConfig != null) {
       debugPrint('DynamicEngine[$name]: Using season probing for series search');
