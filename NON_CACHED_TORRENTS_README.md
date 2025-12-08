@@ -7,54 +7,59 @@ Am implementat un sistem complet pentru gestionarea torrents-urilor care nu sunt
 ## Funcționalități implementate
 
 ### 1. **Service Manager pentru Torrents (RDTorrentManager)**
-   - Locație: `lib/services/rd_torrent_manager.dart`
-   - Monitorizează automat torrents-urile în descărcare
-   - Actualizează statusul la fiecare 5 secunde
-   - Gestionează listeners pentru actualizări în timp real
-   - Track-uiește progresul download-ului (0-100%)
+
+- Locație: `lib/services/rd_torrent_manager.dart`
+- Monitorizează automat torrents-urile în descărcare
+- Actualizează statusul la fiecare 5 secunde
+- Gestionează listeners pentru actualizări în timp real
+- Track-uiește progresul download-ului (0-100%)
 
 ### 2. **Dialog de Confirmare Interactiv**
-   - Apare automat când un torrent nu este cached
-   - Design intuitiv cu gradient colorat (portocaliu-roșu)
-   - Explică clar ce înseamnă "non-cached"
-   - Oferă informații despre ce se va întâmpla după adăugare
-   - Butoane clare: "Nu, mulțumesc" și "Da, adaugă"
+
+- Apare automat când un torrent nu este cached
+- Design intuitiv cu gradient colorat (portocaliu-roșu)
+- Explică clar ce înseamnă "non-cached"
+- Oferă informații despre ce se va întâmpla după adăugare
+- Butoane clare: "Nu, mulțumesc" și "Da, adaugă"
 
 ### 3. **Dialog de Selecție Fișiere** (NOU!)
-   - Se deschide după confirmarea adăugării torrentului
-   - Design elegant cu gradient albastru-violet
-   - **Caracteristici principale:**
-     - Toate fișierele sunt selectate by default
-     - Buton "Selectează Tot" / "Deselectează Tot" pentru control rapid
-     - Buton "Doar Video" - selectează automat doar fișierele video
-     - Iconițe diferite pentru fișiere video (verde) vs alte fișiere
-     - Afișează dimensiunea fiecărui fișier (formatată)
-     - Checkbox-uri interactive pentru fiecare fișier
-     - Statistici live: "X din Y fișiere selectate"
-     - Buton final: "Adaugă la Real Debrid"
-     - Validare: butonul este disabled dacă niciun fișier nu e selectat
-   - **UI/UX:**
-     - Scroll smooth pentru liste mari de fișiere
-     - Visual feedback pentru selecție (border albastru)
-     - Iconițe intuitive pentru tipuri de fișiere
+
+- Se deschide după confirmarea adăugării torrentului
+- Design elegant cu gradient albastru-violet
+- **Caracteristici principale:**
+  - Toate fișierele sunt selectate by default
+  - Buton "Selectează Tot" / "Deselectează Tot" pentru control rapid
+  - Buton "Doar Video" - selectează automat doar fișierele video
+  - Iconițe diferite pentru fișiere video (verde) vs alte fișiere
+  - Afișează dimensiunea fiecărui fișier (formatată)
+  - Checkbox-uri interactive pentru fiecare fișier
+  - Statistici live: "X din Y fișiere selectate"
+  - Buton final: "Adaugă la Real Debrid"
+  - Validare: butonul este disabled dacă niciun fișier nu e selectat
+- **UI/UX:**
+  - Scroll smooth pentru liste mari de fișiere
+  - Visual feedback pentru selecție (border albastru)
+  - Iconițe intuitive pentru tipuri de fișiere
 
 ### 4. **Indicator de Progres în Torrent Search**
-   - Afișează progresul în timp real pentru fiecare torrent în descărcare
-   - Design modern cu gradient albastru
-   - Informații afișate:
-     - Status mesaj (ex: "Se descarcă pe Real Debrid")
-     - Procentaj de progres
-     - Bară de progres animată
-   - Se actualizează automat la fiecare 3 secunde
+
+- Afișează progresul în timp real pentru fiecare torrent în descărcare
+- Design modern cu gradient albastru
+- Informații afișate:
+  - Status mesaj (ex: "Se descarcă pe Real Debrid")
+  - Procentaj de progres
+  - Bară de progres animată
+- Se actualizează automat la fiecare 3 secunde
 
 ### 5. **Secțiune Real Debrid Actualizată**
-   - Afișează atât torrents descărcate cât și cele în descărcare
-   - Card-uri moderne cu informații detaliate:
-     - Progresul curent (%)
-     - Viteza de download (dacă e disponibilă)
-     - Status mesaje clare (converting, queued, downloading, etc.)
-     - Bară de progres vizuală
-   - Auto-refresh la fiecare 5 secunde pentru torrents active
+
+- Afișează atât torrents descărcate cât și cele în descărcare
+- Card-uri moderne cu informații detaliate:
+  - Progresul curent (%)
+  - Viteza de download (dacă e disponibilă)
+  - Status mesaje clare (converting, queued, downloading, etc.)
+  - Bară de progres vizuală
+- Auto-refresh la fiecare 5 secunde pentru torrents active
 
 ## Flux de Utilizare
 
@@ -92,12 +97,14 @@ Am implementat un sistem complet pentru gestionarea torrents-urilor care nu sunt
 ## Integrare cu UI-ul Existent
 
 ### Design Consistent
+
 - Utilizează aceleași culori și stiluri ca restul aplicației
 - Gradient-uri moderne (albastru pentru downloading, verde pentru completed)
 - Iconițe intuitive (downloading, check_circle, etc.)
 - Animații smooth pentru progress bars
 
 ### Performanță Optimizată
+
 - Polling inteligent (doar când sunt torrents active)
 - UI refresh doar când este necesar
 - Timer-e care se opresc automat la dispose
@@ -106,9 +113,11 @@ Am implementat un sistem complet pentru gestionarea torrents-urilor care nu sunt
 ## Fișiere Modificate
 
 1. **lib/services/rd_torrent_manager.dart** (NOU)
+
    - Service complet pentru management torrents
 
 2. **lib/screens/torrent_search_screen.dart**
+
    - Adăugat import pentru RDTorrentManager
    - Modificat `_addToRealDebrid` pentru detectarea non-cached
    - Adăugat `_showNonCachedTorrentDialog`
