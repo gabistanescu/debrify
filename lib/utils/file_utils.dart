@@ -29,6 +29,18 @@ class FileUtils {
     '.flv',
   ];
 
+  // Subtitle file extensions
+  static const List<String> _subtitleExtensions = [
+    '.srt',
+    '.sub',
+    '.vtt',
+    '.ass',
+    '.ssa',
+    '.idx',
+    '.smi',
+    '.sbv',
+  ];
+
   static bool isVideoFile(String fileName) {
     final extension = _getFileExtension(fileName).toLowerCase();
     return _videoExtensions.contains(extension);
@@ -72,5 +84,22 @@ class FileUtils {
     }
     
     return '';
+  }
+
+  static bool isSubtitleFile(String fileName) {
+    final extension = _getFileExtension(fileName).toLowerCase();
+    return _subtitleExtensions.contains(extension);
+  }
+
+  static String getFileType(String fileName) {
+    final extension = _getFileExtension(fileName).toLowerCase();
+    if (_videoExtensions.contains(extension)) {
+      return extension.replaceFirst('.', '').toUpperCase();
+    } else if (_subtitleExtensions.contains(extension)) {
+      return extension.replaceFirst('.', '').toUpperCase();
+    } else if (extension.isNotEmpty) {
+      return extension.replaceFirst('.', '').toUpperCase();
+    }
+    return 'FILE';
   }
 } 

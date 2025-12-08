@@ -7534,6 +7534,21 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
     });
   }
 
+  void _selectOnlySubtitles() {
+    setState(() {
+      _selectedFileIds.clear();
+      for (final file in widget.files) {
+        final fileName = (file['name'] as String?)?.isNotEmpty == true
+            ? file['name'] as String
+            : FileUtils.getFileName(file['path'] as String? ?? '');
+        if (fileName.isNotEmpty && FileUtils.isSubtitleFile(fileName)) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = _selectedFileIds.length == widget.files.length;
+    });
+  }
+
   List<Widget> _buildFileListItems() {
     final List<Widget> items = [];
     String? currentFolder;
@@ -7641,7 +7656,7 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4, left: 28),
               child: Text(
-                Formatters.formatFileSize(fileSize),
+                '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.6),
                   fontSize: 12,
@@ -7884,14 +7899,61 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _selectOnlyVideoFiles,
-                      icon: const Icon(Icons.movie, size: 18),
-                      label: const Text('Only Video'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF10B981),
-                        side: const BorderSide(color: Color(0xFF10B981)),
+                    child: PopupMenuButton<String>(
+                      offset: const Offset(0, 8),
+                      onSelected: (value) {
+                        if (value == 'video') {
+                          _selectOnlyVideoFiles();
+                        } else if (value == 'subtitles') {
+                          _selectOnlySubtitles();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'video',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Video', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'subtitles',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Subtitles', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      color: const Color(0xFF1E293B),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                      ),
+                      position: PopupMenuPosition.under,
+                      child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF10B981)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                            SizedBox(width: 8),
+                            Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                          ],
+                        ),
                       ),
                     ),
                   ),
