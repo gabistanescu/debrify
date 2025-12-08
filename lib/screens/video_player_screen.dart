@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../services/pikpak_api_service.dart';
 
 import '../widgets/series_browser.dart';
 import '../widgets/movie_collection_browser.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkv;
 
@@ -282,6 +284,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // Dynamic title for Debrify TV (no-playlist) flow
   String _dynamicTitle = '';
 
+  // External subtitle files loaded by user
+  final List<Map<String, String>> _externalSubtitles = [];
+
   Duration? _randomStartOffset(Duration duration) {
     final num clampedPercent =
         widget.randomStartMaxPercent.clamp(0, 99);
@@ -494,6 +499,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         },
       ),
     );
+    
     _videoController = mkv.VideoController(_player);
 
     _currentStreamUrl = initialUrl.isNotEmpty ? initialUrl : null;
@@ -4534,6 +4540,104 @@ extension on _VideoPlayerScreenState {
     return 'Track ${index + 1}';
   }
 
+  /// Pick and load an external subtitle file
+  /// Returns the unique ID of the loaded subtitle, or null if cancelled/failed
+  Future<String?> _pickAndLoadSubtitle() async {
+    // Check if the widget is being disposed
+    if (_isDisposing || !mounted) return null;
+    
+    String? filePath;
+    String fileName = '';
+    String fileNameWithoutExt = '';
+    
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['srt', 'vtt', 'ass', 'ssa'],
+        allowMultiple: false,
+      );
+
+      // Check again after async operation
+      if (_isDisposing || !mounted) return null;
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        filePath = file.path;
+        fileName = file.name;
+        
+        if (filePath != null && filePath.isNotEmpty) {
+          fileNameWithoutExt = fileName.contains('.')
+              ? fileName.substring(0, fileName.lastIndexOf('.'))
+              : fileName;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking subtitle file: $e');
+      return null;
+    }
+    
+    // Exit if no file was picked or widget is disposed
+    if (filePath == null || filePath.isEmpty || _isDisposing || !mounted) return null;
+    
+    // Ensure proper file URI format for the subtitle
+    final subtitleUri = filePath.startsWith('file://') ? filePath : 'file://$filePath';
+    
+    // Check if this subtitle already exists (prevent duplicates)
+    final existingIndex = _externalSubtitles.indexWhere(
+      (sub) => sub['path'] == subtitleUri
+    );
+    
+    if (existingIndex != -1) {
+      // Subtitle already loaded, just return its ID for selection
+      debugPrint('Subtitle already loaded: $fileName');
+      final existingId = _externalSubtitles[existingIndex]['id']!;
+      
+      // Re-select it in the player
+      try {
+        await _player.setSubtitleTrack(
+          mk.SubtitleTrack.uri(subtitleUri),
+        );
+      } catch (e) {
+        debugPrint('Error re-selecting existing subtitle: $e');
+      }
+      
+      return existingId;
+    }
+    
+    // Generate unique ID for this subtitle
+    final uniqueId = 'external_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Add to external subtitles list
+    if (!mounted) return null;
+    setState(() {
+      _externalSubtitles.add({
+        'path': subtitleUri,
+        'title': fileNameWithoutExt,
+        'id': uniqueId,
+      });
+    });
+    
+    // Load the subtitle into the player with error handling
+    if (_isDisposing || !mounted) return null;
+    
+    try {
+      await _player.setSubtitleTrack(
+        mk.SubtitleTrack.uri(subtitleUri),
+      );
+      debugPrint('Loaded external subtitle: $fileName');
+      return uniqueId; // Return the ID for auto-selection
+    } catch (e) {
+      debugPrint('Error loading subtitle into player: $e');
+      // Remove from list if loading failed
+      if (mounted && !_isDisposing) {
+        setState(() {
+          _externalSubtitles.removeWhere((sub) => sub['id'] == uniqueId);
+        });
+      }
+      return null;
+    }
+  }
+
   Future<void> _showTracksSheet(BuildContext context) async {
     final tracks = _player.state.tracks;
     final audios = tracks.audio
@@ -4545,7 +4649,11 @@ extension on _VideoPlayerScreenState {
         )
         .toList(growable: false);
     String selectedAudio = _player.state.track.audio.id;
-    String selectedSub = _player.state.track.subtitle.id;
+    // Normalize subtitle selection: 'no' and 'auto' mean Off (empty string)
+    final currentSubId = _player.state.track.subtitle.id;
+    String selectedSub = (currentSubId.toLowerCase() == 'no' || currentSubId.toLowerCase() == 'auto') 
+        ? '' 
+        : currentSubId;
 
     await showModalBottomSheet(
       context: context,
@@ -4686,13 +4794,20 @@ extension on _VideoPlayerScreenState {
                                                 setModalState(() {
                                                   selectedAudio = '';
                                                 });
-                                                await _player.setAudioTrack(
-                                                  mk.AudioTrack.auto(),
-                                                );
-                                                await _persistTrackChoice(
-                                                  '',
-                                                  selectedSub,
-                                                );
+                                                try {
+                                                  if (_isDisposing || !mounted) return;
+                                                  await _player.setAudioTrack(
+                                                    mk.AudioTrack.auto(),
+                                                  );
+                                                  if (!_isDisposing && mounted) {
+                                                    await _persistTrackChoice(
+                                                      '',
+                                                      selectedSub,
+                                                    );
+                                                  }
+                                                } catch (e) {
+                                                  debugPrint('Error setting auto audio: $e');
+                                                }
                                               },
                                             );
                                           }
@@ -4708,11 +4823,18 @@ extension on _VideoPlayerScreenState {
                                               setModalState(() {
                                                 selectedAudio = v;
                                               });
-                                              await _player.setAudioTrack(a);
-                                              await _persistTrackChoice(
-                                                v,
-                                                selectedSub,
-                                              );
+                                              try {
+                                                if (_isDisposing || !mounted) return;
+                                                await _player.setAudioTrack(a);
+                                                if (!_isDisposing && mounted) {
+                                                  await _persistTrackChoice(
+                                                    v,
+                                                    selectedSub,
+                                                  );
+                                                }
+                                              } catch (e) {
+                                                debugPrint('Error setting audio track: $e');
+                                              }
                                             },
                                           );
                                         },
@@ -4777,8 +4899,9 @@ extension on _VideoPlayerScreenState {
                                     const SizedBox(height: 12),
                                     Expanded(
                                       child: ListView.builder(
-                                        itemCount: subs.length + 1,
+                                        itemCount: subs.length + 2 + _externalSubtitles.length,
                                         itemBuilder: (context, index) {
+                                          // Index 0: "Off" button
                                           if (index == 0) {
                                             return _NetflixRadioTile(
                                               value: '',
@@ -4788,31 +4911,146 @@ extension on _VideoPlayerScreenState {
                                                 setModalState(() {
                                                   selectedSub = '';
                                                 });
-                                                await _player.setSubtitleTrack(
-                                                  mk.SubtitleTrack.no(),
-                                                );
-                                                await _persistTrackChoice(
-                                                  selectedAudio,
-                                                  '',
-                                                );
+                                                try {
+                                                  if (_isDisposing || !mounted) return;
+                                                  await _player.setSubtitleTrack(
+                                                    mk.SubtitleTrack.no(),
+                                                  );
+                                                  if (!_isDisposing && mounted) {
+                                                    await _persistTrackChoice(
+                                                      selectedAudio,
+                                                      '',
+                                                    );
+                                                  }
+                                                } catch (e) {
+                                                  debugPrint('Error disabling subtitles: $e');
+                                                }
                                               },
                                             );
                                           }
-                                          final s = subs[index - 1];
+                                          
+                                          // Index 1: "Add" button - styled like other tiles for consistent width
+                                          if (index == 1) {
+                                            return Container(
+                                              margin: const EdgeInsets.only(bottom: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.05),
+                                                borderRadius: BorderRadius.circular(12),
+                                                border: Border.all(
+                                                  color: Colors.white.withOpacity(0.2),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
+                                                  onTap: () async {
+                                                    final newSubId = await _pickAndLoadSubtitle();
+                                                    // Auto-select the newly imported subtitle
+                                                    if (newSubId != null) {
+                                                      setModalState(() {
+                                                        selectedSub = newSubId;
+                                                      });
+                                                    } else {
+                                                      // Just refresh the modal if cancelled or failed
+                                                      setModalState(() {});
+                                                    }
+                                                  },
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                                    child: Row(
+                                                      children: [
+                                                        Container(
+                                                          width: 20,
+                                                          height: 20,
+                                                          decoration: BoxDecoration(
+                                                            shape: BoxShape.circle,
+                                                            border: Border.all(
+                                                              color: Colors.white.withOpacity(0.5),
+                                                              width: 2,
+                                                            ),
+                                                          ),
+                                                          child: Icon(
+                                                            Icons.add_rounded,
+                                                            color: Colors.white.withOpacity(0.7),
+                                                            size: 12,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12),
+                                                        Expanded(
+                                                          child: Text(
+                                                            'Add',
+                                                            style: TextStyle(
+                                                              color: Colors.white.withOpacity(0.8),
+                                                              fontWeight: FontWeight.w500,
+                                                              fontSize: 14,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          
+                                          // Indices 2 to (2 + _externalSubtitles.length - 1): External subtitles
+                                          if (index < 2 + _externalSubtitles.length) {
+                                            final extIndex = index - 2;
+                                            final extSub = _externalSubtitles[extIndex];
+                                            return _NetflixRadioTile(
+                                              value: extSub['id']!,
+                                              groupValue: selectedSub,
+                                              title: extSub['title']!,
+                                              onChanged: (v) async {
+                                                if (v == null) return;
+                                                setModalState(() {
+                                                  selectedSub = v;
+                                                });
+                                                try {
+                                                  if (_isDisposing || !mounted) return;
+                                                  await _player.setSubtitleTrack(
+                                                    mk.SubtitleTrack.uri(extSub['path']!),
+                                                  );
+                                                  if (!_isDisposing && mounted) {
+                                                    await _persistTrackChoice(
+                                                      selectedAudio,
+                                                      v,
+                                                    );
+                                                  }
+                                                } catch (e) {
+                                                  debugPrint('Error setting external subtitle: $e');
+                                                }
+                                              },
+                                            );
+                                          }
+                                          
+                                          // Remaining indices: Embedded subtitles
+                                          final embeddedIndex = index - 2 - _externalSubtitles.length;
+                                          final s = subs[embeddedIndex];
                                           return _NetflixRadioTile(
                                             value: s.id,
                                             groupValue: selectedSub,
-                                            title: _labelForTrack(s, index - 1),
+                                            title: _labelForTrack(s, embeddedIndex),
                                             onChanged: (v) async {
                                               if (v == null) return;
                                               setModalState(() {
                                                 selectedSub = v;
                                               });
-                                              await _player.setSubtitleTrack(s);
-                                              await _persistTrackChoice(
-                                                selectedAudio,
-                                                v,
-                                              );
+                                              try {
+                                                if (_isDisposing || !mounted) return;
+                                                await _player.setSubtitleTrack(s);
+                                                if (!_isDisposing && mounted) {
+                                                  await _persistTrackChoice(
+                                                    selectedAudio,
+                                                    v,
+                                                  );
+                                                }
+                                              } catch (e) {
+                                                debugPrint('Error setting embedded subtitle: $e');
+                                              }
                                             },
                                           );
                                         },
