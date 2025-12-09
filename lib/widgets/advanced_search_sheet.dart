@@ -457,9 +457,14 @@ class _AdvancedSearchSheetState extends State<AdvancedSearchSheet> {
                 child: Focus(
                   focusNode: _cancelButtonFocusNode,
                   onKeyEvent: (node, event) => _handleCancelKey(event),
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1), // Primary color
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: _performLookup,
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('Search'),
                   ),
                 ),
               ),
