@@ -311,8 +311,8 @@ class _MainPageState extends State<MainPage> {
   static bool get isAutoLaunchShowingOverlay => _isAutoLaunchShowingOverlay;
 
   int _selectedIndex = 1; // Start at Playlist screen
-  bool _hasRealDebridKey = false;
-  bool _hasTorboxKey = false;
+  bool _hasRealDebridKey = true;
+  bool _hasTorboxKey = true;
   bool _rdIntegrationEnabled = true;
   bool _tbIntegrationEnabled = true;
   bool _pikpakEnabled = false;
@@ -712,7 +712,8 @@ class _MainPageState extends State<MainPage> {
     final tb = hasTorbox ?? _hasTorboxKey;
     final pikpak = pikpakEnabled ?? _pikpakEnabled;
     if (!rd && !tb && !pikpak) {
-      return [0, 7];
+      // Always show Playlist (1) to prevent startup glitch where app jumps from Search (0) -> Playlist (1)
+      return [0, 1, 7];
     }
 
     final indices = <int>[0, 1, 2, 3];
