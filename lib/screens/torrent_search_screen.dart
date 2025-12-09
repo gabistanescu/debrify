@@ -789,7 +789,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
 
   Widget _buildAdvancedButton() {
     final selection = _activeAdvancedSelection;
-    final label = selection == null ? 'Adv' : 'Adv*';
+    final isActive = selection != null && _hasSearched;
+    final label = isActive ? 'Adv*' : 'Adv';
+    
     return Focus(
       focusNode: _advancedButtonFocusNode,
       onKeyEvent: (node, event) {
@@ -802,35 +804,63 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         return KeyEventResult.ignored;
       },
       child: Tooltip(
-        message: selection == null
-            ? 'Search via IMDb'
-            : 'Advanced IMDb search active',
+        message: isActive
+            ? 'Advanced IMDb search active'
+            : 'Search via IMDb',
         child: Container(
           decoration: BoxDecoration(
+            gradient: isActive
+                ? const LinearGradient(
+                    colors: [Color(0xFF7C3AED), Color(0xFFA855F7)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
             borderRadius: BorderRadius.circular(999),
             border: _advancedButtonFocused
                 ? Border.all(color: Colors.white, width: 2)
                 : null,
+            boxShadow: [
+              BoxShadow(
+                color: (isActive ? const Color(0xFF7C3AED) : const Color(0xFF1E3A8A))
+                    .withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-          child: TextButton.icon(
-            onPressed: selection == null
-                ? _openAdvancedSearchDialog
-                : () async {
-                    await _openAdvancedSearchDialog();
-                  },
-            style: TextButton.styleFrom(
-              backgroundColor: selection == null
-                  ? const Color(0xFF1E3A8A)
-                  : const Color(0xFF7C3AED),
-              foregroundColor: Colors.white,
-              minimumSize: const Size(64, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openAdvancedSearchDialog,
+              borderRadius: BorderRadius.circular(999),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome_outlined,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            icon: const Icon(Icons.auto_awesome_outlined, size: 16),
-            label: Text(label, style: const TextStyle(fontSize: 12)),
           ),
         ),
       ),
@@ -5810,7 +5840,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                   children: [
                     // Search Input + Advanced action
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: AnimatedContainer(
