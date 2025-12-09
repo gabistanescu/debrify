@@ -2459,7 +2459,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       return;
     }
 
-    // Show loading dialog while checking and adding magnet
+    // Show loading dialog while checking cache
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2494,70 +2494,16 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     );
 
     try {
-      // Add magnet to Real Debrid (this also checks cache)
+      // Use the same method as Add button to check cache properly
       final magnetLink = 'magnet:?xt=urn:btih:$infohash';
-      final addResult = await DebridService.addMagnet(apiKey, magnetLink);
-      final torrentId = addResult['id'] as String;
+      final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
       
-      // Wait for torrent info and files to be ready (with retry logic)
-      Map<String, dynamic>? torrentInfo;
-      List<dynamic>? files;
-      String? status;
-      int retries = 0;
-      const maxRetries = 10; // Max 20 seconds (10 retries * 2 seconds)
-      bool filesAppearedQuickly = false; // Track if files appeared in first 2 retries (cached indicator)
-      
-      while (retries < maxRetries) {
-        await Future.delayed(const Duration(seconds: 2));
-        
-        torrentInfo = await DebridService.getTorrentInfo(apiKey, torrentId);
-        files = torrentInfo['files'] as List<dynamic>?;
-        status = torrentInfo['status'] as String?;
-        
-        print('Retry $retries - Status: $status, Files count: ${files?.length ?? 0}');
-        
-        // If we have files, we're done
-        if (files != null && files.isNotEmpty) {
-          if (retries <= 2) {
-            filesAppearedQuickly = true; // Files appeared within 4 seconds = likely cached
-          }
-          break;
-        }
-        
-        // If status is magnet_error or torrent is dead, stop retrying
-        if (status == 'magnet_error' || status == 'error' || status == 'dead') {
-          break;
-        }
-        
-        // If still in magnet_conversion, keep waiting
-        if (status == 'magnet_conversion') {
-          retries++;
-          continue;
-        }
-        
-        // If waiting_files_selection but no files yet, wait a bit more
-        if (status == 'waiting_files_selection') {
-          retries++;
-          if (retries >= 3) break; // Don't wait too long if status is correct
-          continue;
-        }
-        
-        // Unknown status, break
-        break;
-      }
-      
-      print('Final - Status: $status, Files count: ${files?.length ?? 0}'); // Debug
-      
-      // Check cache status from torrent info
-      // A torrent is cached if:
-      // 1. Files appeared quickly (within 4 seconds / 2 retries) AND
-      // 2. Status is waiting_files_selection or downloaded AND
-      // 3. Files are available
-      // This indicates Real-Debrid already had the files cached
-      final isCached = filesAppearedQuickly && 
-                       (status == 'waiting_files_selection' || status == 'downloaded') && 
-                       files != null && 
-                       files.isNotEmpty;
+      // Extract torrent info from result
+      final torrentId = result['torrentId'] as String;
+      final files = result['files'] as List<dynamic>?;
+      // If addTorrentToDebrid succeeded without throwing an error, the torrent is cached
+      final isCached = true;
+      print('🔍 DEBUG: _showCheckFilesDialog - isCached set to: $isCached');
       
       // Close loading dialog
       if (mounted && Navigator.of(context).canPop()) {
@@ -2566,7 +2512,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       
       // Check if files are available
       if (files == null || files.isEmpty) {
-        // Delete the torrent since it has no files or failed
+        // Delete the torrent since it has no files
         try {
           await DebridService.deleteTorrent(apiKey, torrentId);
         } catch (e) {
@@ -2574,11 +2520,6 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         }
         
         if (mounted) {
-          String errorMessage = 'No seeders available for this torrent';
-          if (status == 'magnet_conversion') {
-            errorMessage = 'Torrent is still loading. Please try again in a moment.';
-          }
-          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -2592,10 +2533,10 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                     child: const Icon(Icons.error, color: Colors.white, size: 16),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  const Expanded(
                     child: Text(
-                      errorMessage,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      'No files available for this torrent',
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -2606,15 +2547,16 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                 borderRadius: BorderRadius.circular(12),
               ),
               margin: const EdgeInsets.all(16),
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
         return;
       }
       
-      // Show file selection dialog with cache status
+      // Show file selection dialog with proper cache status
       if (mounted) {
+        print('🔍 DEBUG: About to show dialog with isCached: $isCached');
         await _showFileSelectionDialogWithCacheStatus(
           infohash,
           torrentName,
@@ -2625,14 +2567,26 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
         );
       }
     } catch (e) {
-      print('Error in _showCheckFilesDialog: $e'); // Debug
-      
       // Close loading dialog
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      
-      // Show error
+
+      // Check if the error is due to non-cached torrent
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('not readily available') || 
+          errorMessage.contains('file is not available') ||
+          errorMessage.contains('not cached') ||
+          errorMessage.contains('please try a different torrent') ||
+          errorMessage.contains('magnet') ||
+          errorMessage.contains('no server') ||
+          errorMessage.contains('error')) {
+        // Torrent is NOT cached - add it and show file selection
+        await _showNonCachedFileSelectionDialog(infohash, torrentName, apiKey);
+        return;
+      }
+
+      // Show error message for other errors
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2649,7 +2603,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Error loading files: ${e.toString()}',
+                    'Failed to check files: ${e.toString()}',
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -2661,7 +2615,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -2761,7 +2715,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
           apiKey: apiKey,
           torrentId: torrentId,
           files: files,
-          isCached: null, // No cache info for this flow
+          isCached: false, // Torrent is NOT cached - had to add via magnet
         );
       },
     );
@@ -2794,6 +2748,7 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
     List<dynamic> files,
     bool isCached,
   ) async {
+    print('🔍 DEBUG: _showFileSelectionDialogWithCacheStatus called with isCached: $isCached');
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false, // Force user to use buttons or X
@@ -7415,6 +7370,7 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
   @override
   void initState() {
     super.initState();
+    print('🔍 DEBUG: _FileSelectionDialogState.initState - widget.isCached = ${widget.isCached}');
     
     // Group files by folder
     final Map<String, List<dynamic>> folderGroups = {};
@@ -7838,7 +7794,10 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
 
             // Cache Status Badge (if available)
             if (widget.isCached != null)
-              Container(
+              Builder(
+                builder: (context) {
+                  print('🔍 DEBUG: Rendering cache badge - isCached: ${widget.isCached}');
+                  return Container(
                 margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -7869,7 +7828,7 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
-                        widget.isCached! ? 'Cached ⚡' : 'Not Cached',
+                        widget.isCached! ? 'Cached' : 'Not Cached',
                         style: TextStyle(
                           fontSize: 13,
                           color: widget.isCached!
@@ -7881,6 +7840,8 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
                     ),
                   ],
                 ),
+              );
+                },
               ),
 
             // Action buttons
