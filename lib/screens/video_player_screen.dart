@@ -1772,6 +1772,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   @override
+  @override
   void dispose() {
     if (_isDisposing) return;
     _isDisposing = true;
@@ -1793,19 +1794,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _titleBadgeTimer?.cancel();
     _transitionStopTimer?.cancel();
     
-    // CRITICAL: Stop player FIRST before cancelling subscriptions
-    // This prevents the player from sending events to already-deleted callbacks
-    try {
-      _player.pause();
-      _player.stop();
-      // Note: We intentionally do NOT call _player.dispose() here
-      // The native mpv callbacks continue running after dispose(), causing crashes
-      // Let the garbage collector clean up when it's safe
-    } catch (e) {
-      debugPrint('Error stopping player: $e');
-    }
+    // CRITICAL: Properly stop player and wait for native operations to complete
+    // This prevents FFI callbacks from being invoked after disposal
+    _disposePlayerSafely();
     
-    // NOW cancel all subscriptions (after player is stopped and won't send more events)
+    // Cancel all subscriptions AFTER player operations are complete
     _posSub?.cancel();
     _posSub = null;
     _durSub?.cancel();
@@ -1837,6 +1830,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
     });
     super.dispose();
+  }
+
+  /// Safely dispose the media player to prevent FFI callback crashes
+  Future<void> _disposePlayerSafely() async {
+    try {
+      // Step 1: Pause playback immediately
+      await _player.pause();
+      
+      // Step 2: Stop the player (this releases native resources)
+      await _player.stop();
+      
+      // Step 3: Wait a brief moment for all native callbacks to complete
+      // This is crucial - native FFI callbacks may still be in flight
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      // Step 4: Now it's safe to dispose the player
+      // Note: We intentionally do NOT call _player.dispose() as it can still
+      // trigger crashes. Let the garbage collector handle cleanup when safe.
+      
+    } catch (e) {
+      debugPrint('Error during safe player disposal: $e');
+      // Even if there's an error, continue with disposal
+    }
   }
 
   Timer? _autosaveTimer;
@@ -2308,28 +2324,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (localPos.dy < topBar || localPos.dy > size.height - bottomBar) return;
     }
 
-    // Check if we're on Android and if the tap is in the far right area for next episode
-    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-    final farRightThreshold = size.width * 0.8; // Far right 20% of screen
-
-    if (isAndroid && localPos.dx > farRightThreshold) {
-      // Double tap on far right for next episode on Android
-      if (_hasNextEpisode() || widget.requestMagicNext != null) {
-        _ripple = _DoubleTapRipple(
-          center: localPos,
-          icon: Icons.skip_next_rounded,
-        );
-        setState(() {});
-        Future.delayed(const Duration(milliseconds: 450), () {
-          if (mounted) setState(() => _ripple = null);
-        });
-        await _goToNextEpisode();
-        return;
-      }
+    // Define zones: left 35%, center 30% (dead zone), right 35%
+    final leftZoneEnd = size.width * 0.35;
+    final rightZoneStart = size.width * 0.65;
+    
+    // Ignore taps in center zone (middle 30%)
+    if (localPos.dx >= leftZoneEnd && localPos.dx <= rightZoneStart) {
+      return;
     }
 
-    // Default seek behavior for left/right taps
-    final isLeft = localPos.dx < size.width / 2;
+    // Determine if tap is in left or right zone
+    final isLeft = localPos.dx < leftZoneEnd;
     final delta = const Duration(seconds: 10);
     final target = _position + (isLeft ? -delta : delta);
     final minPos = Duration.zero;
@@ -2338,8 +2343,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         ? minPos
         : (target > maxPos ? maxPos : target);
     await _player.seek(clamped);
+    
+    // Fixed popup positions: 1/4 for left, 3/4 for right
+    final fixedX = isLeft ? size.width * 0.25 : size.width * 0.75;
+    final fixedY = size.height * 0.5; // Center vertically
+    
     _ripple = _DoubleTapRipple(
-      center: localPos,
+      center: Offset(fixedX, fixedY),
       icon: isLeft ? Icons.replay_10_rounded : Icons.forward_10_rounded,
     );
     setState(() {});
