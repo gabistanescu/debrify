@@ -300,7 +300,7 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
+class _MainPageState extends State<MainPage> {
   static String? _startupChannelIdToLaunch;
   static bool _startupChannelIdConsumed = false;
 
@@ -311,8 +311,6 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
   static bool get isAutoLaunchShowingOverlay => _isAutoLaunchShowingOverlay;
 
   int _selectedIndex = 1; // Start at Playlist screen
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
   bool _hasRealDebridKey = false;
   bool _hasTorboxKey = false;
   bool _rdIntegrationEnabled = true;
@@ -421,14 +419,6 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
     MainPageBridge.hideAutoLaunchOverlay = _hideAutoLaunchOverlay;
     MainPageBridge.addIntegrationListener(_handleIntegrationChanged);
     _loadIntegrationState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    _animationController.forward();
 
     AndroidNativeDownloader.isTelevision().then((isTv) async {
       if (!mounted) return;
@@ -460,7 +450,6 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
     MainPageBridge.openDebridOptions = null;
     MainPageBridge.openTorboxAction = null;
     MainPageBridge.hideAutoLaunchOverlay = null;
-    _animationController.dispose();
     DeepLinkService().dispose();
     super.dispose();
   }
@@ -510,8 +499,6 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
     setState(() {
       _selectedIndex = index;
     });
-    _animationController.reset();
-    _animationController.forward();
   }
 
 
@@ -787,12 +774,9 @@ class _MainPageState extends State<MainPage> with TickerProviderStateMixin {
               ),
               automaticallyImplyLeading: false,
             ),
-            body: FadeTransition(
-              opacity: _fadeAnimation,
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: _pages,
-              ),
+            body: IndexedStack(
+              index: _selectedIndex,
+              children: _pages,
             ),
           ),
         ),

@@ -313,7 +313,7 @@ class _TopNavButtonState extends State<_TopNavButton> {
         clipBehavior: Clip.none,
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             padding: EdgeInsets.symmetric(
               horizontal: selected ? 12 : 10,
@@ -357,26 +357,32 @@ class _TopNavButtonState extends State<_TopNavButton> {
                       size: 18,
                       color: selected ? colorScheme.primary : Colors.white70,
                     ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeOut,
-                      child: selected
-                          ? Padding(
-                              key: const ValueKey('label'),
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Text(
-                                widget.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  fontSize: 13,
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        height: 20, // Lock height to prevent vertical jitter
+                        child: selected
+                            ? Padding(
+                                key: const ValueKey('label'),
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Center(
+                                  child: Text(
+                                    widget.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.clip,
+                                    softWrap: false,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            )
-                          : const SizedBox.shrink(key: ValueKey('empty')),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                     ),
                   ],
                 ),
