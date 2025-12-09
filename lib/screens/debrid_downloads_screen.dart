@@ -91,6 +91,9 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     _torrentScrollController.addListener(_onTorrentScroll);
     _downloadScrollController.addListener(_onDownloadScroll);
     
+    // Listen for torrent additions from other screens (e.g., Torrent Search)
+    StorageService.realDebridTorrentsChanged.addListener(_onRealDebridTorrentsChanged);
+    
     // Start auto-refresh timer for downloading torrents - only update progress
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && _selectedView == _DebridDownloadsView.torrents) {
@@ -163,6 +166,14 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
       // Silently fail - don't disturb the user
       debugPrint('Error updating torrent progress: $e');
     }
+  }
+  
+  // Callback when torrents are added from other screens (e.g., Torrent Search)
+  void _onRealDebridTorrentsChanged() {
+    if (!mounted || _apiKey == null) return;
+    
+    // Refresh the torrents list to show newly added torrents
+    _fetchTorrents(_apiKey!, reset: true);
   }
   
   void _showTorrentCompletedNotification(RDTorrent torrent) {
@@ -301,6 +312,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
 
   @override
   void dispose() {
+    StorageService.realDebridTorrentsChanged.removeListener(_onRealDebridTorrentsChanged);
     _searchController.dispose();
     _torrentScrollController.dispose();
     _downloadScrollController.dispose();

@@ -2299,6 +2299,9 @@ class _TorrentSearchScreenState extends State<TorrentSearchScreen>
       final magnetLink = 'magnet:?xt=urn:btih:$infohash';
       final result = await DebridService.addTorrentToDebrid(apiKey, magnetLink);
 
+      // Notify Real Debrid screen that a torrent was added
+      StorageService.realDebridTorrentsChanged.value++;
+
       // Close loading dialog
       Navigator.of(context).pop();
 

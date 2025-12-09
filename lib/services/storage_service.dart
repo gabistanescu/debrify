@@ -8,6 +8,9 @@ class StorageService {
   // Notifier for playlist changes - increments when items are added
   static final ValueNotifier<int> playlistChanged = ValueNotifier<int>(0);
   
+  // Notifier for Real Debrid torrent changes - increments when torrents are added
+  static final ValueNotifier<int> realDebridTorrentsChanged = ValueNotifier<int>(0);
+  
   static const String _apiKeyKey = 'real_debrid_api_key';
   static const String _fileSelectionKey = 'real_debrid_file_selection';
   static const String _torboxApiKey = 'torbox_api_key';
