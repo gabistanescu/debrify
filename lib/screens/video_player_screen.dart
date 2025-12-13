@@ -624,14 +624,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
   }
 
-
-  /// Toggle video rotation between 0° (horizontal) and 270° (vertical portrait)
+  /// Toggle video rotation - switches between landscape (0°) and portrait (270°)
   void _rotateVideo() {
     if (!mounted) return;
     
-    // Toggle between 0° and 270° only
+    // Toggle between 0° (landscape) and 270° (portrait)
     final newRotation = _videoRotation == 0 ? 270 : 0;
-    debugPrint('VideoPlayer: Manual rotation to $newRotation°');
+    
+    debugPrint('VideoPlayer: Manual rotation from $_videoRotation° to $newRotation°');
     
     // Use post-frame callback to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -639,6 +639,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         setState(() {
           _videoRotation = newRotation;
         });
+        
+        // Control orientation lock based on rotation
+        if (newRotation == 270) {
+          // Portrait mode - lock to current orientation (disable auto-rotate)
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+        } else {
+          // Landscape mode - allow auto-rotate
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+          ]);
+        }
       }
     });
   }
@@ -3683,6 +3700,7 @@ Future<Set<int>> _getFinishedEpisodesForSimplePlaylist() async {
                   speed: _playbackSpeed,
                   aspectMode: _aspectMode,
                   isLandscape: _landscapeLocked,
+                  videoRotation: _videoRotation,
                   onRotate: _toggleOrientation,
                   hasPlaylist:
                       widget.playlist != null &&
@@ -3822,6 +3840,7 @@ class _Controls extends StatelessWidget {
   final double speed;
   final _AspectMode aspectMode;
   final bool isLandscape;
+  final int videoRotation;
   final VoidCallback onRotate;
   final VoidCallback onShowPlaylist;
   final VoidCallback onShowTracks;
@@ -3856,6 +3875,7 @@ class _Controls extends StatelessWidget {
     required this.speed,
     required this.aspectMode,
     required this.isLandscape,
+    required this.videoRotation,
     required this.onRotate,
     required this.onShowPlaylist,
     required this.onShowTracks,
@@ -3989,55 +4009,64 @@ class _Controls extends StatelessWidget {
           right: true,
           top: true,
           bottom: true,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Netflix-style Top Bar - Back button and centered title when playing
-              Row(
-                children: [
-                  if (!hideBackButton)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: Colors.white,
-                      ),
-                      onPressed: onBack,
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Main title
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
+          child: Builder(
+            builder: (context) {
+              // Detect if video is rotated to portrait (270°)
+              final isVideoRotatedPortrait = videoRotation == 270;
+              final topPadding = isVideoRotatedPortrait ? 60.0 : 0.0;
+              debugPrint('🎯 VIDEO CONTROLS: videoRotation=$videoRotation, isVideoRotatedPortrait=$isVideoRotatedPortrait, topPadding=$topPadding');
+              return Padding(
+                // Extra top padding when video is rotated to portrait to avoid punch-hole camera
+                padding: EdgeInsets.only(top: topPadding),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Netflix-style Top Bar - Back button and centered title when playing
+                Row(
+                  children: [
+                    if (!hideBackButton)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: Colors.white,
                         ),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: 4),
+                        onPressed: onBack,
+                      ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Main title
                           Text(
-                            subtitle!,
+                            title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
                             ),
                           ),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                          // Enhanced metadata row - removed from center
                         ],
-                        // Enhanced metadata row - removed from center
-                      ],
+                      ),
                     ),
-                  ),
-                  // Empty space to balance the back button (when visible)
-                  if (!hideBackButton) const SizedBox(width: 48),
-                ],
-              ),
+                    // Empty space to balance the back button (when visible)
+                    if (!hideBackButton) const SizedBox(width: 48),
+                  ],
+                ),
 
               // Netflix-style Bottom Bar with all controls (conditionally shown)
               if (!hideOptions)
@@ -4209,6 +4238,9 @@ class _Controls extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        );
+            },
           ),
         ),
       ],

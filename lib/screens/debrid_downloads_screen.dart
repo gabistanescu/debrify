@@ -3607,7 +3607,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
               CircularProgressIndicator(),
               SizedBox(width: 16),
               Text(
-                'Preparing playlistâ€¦',
+                'Preparing playlist...',
                 style: TextStyle(color: Colors.white),
               ),
             ],
