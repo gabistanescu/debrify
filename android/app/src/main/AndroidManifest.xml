@@ -81,6 +81,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- WSA FIX: Disable Impeller rendering backend on Android 13 (WSA)
+             Impeller has rendering issues on WSA that prevent UI updates -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     
     <!-- Required to query activities that can process text, see:
