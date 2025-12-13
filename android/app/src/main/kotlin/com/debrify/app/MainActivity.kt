@@ -33,6 +33,27 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun isRunningOnWSA(): Boolean {
+        // WSA (Windows Subsystem for Android) detection
+        // WSA has manufacturer "Microsoft Corporation"
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        val model = android.os.Build.MODEL.lowercase()
+        
+        return manufacturer.contains("microsoft") || 
+               model.contains("subsystem for android")
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // WSA FIX: Disable Impeller on WSA only
+        if (isRunningOnWSA()) {
+            android.util.Log.d("Debrify", "Running on WSA - disabling Impeller")
+            intent.putExtra("enable-impeller", false)
+        } else {
+            android.util.Log.d("Debrify", "Running on physical device - Impeller enabled")
+        }
+        super.onCreate(savedInstanceState)
+    }
+
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
 		MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
