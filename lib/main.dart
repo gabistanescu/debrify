@@ -395,6 +395,25 @@ class _MainPageState extends State<MainPage> {
         }
       });
     };
+    MainPageBridge.openDebridWithMagnet = (String magnetLink) {
+      if (!mounted) return;
+      if (!_hasRealDebridKey) {
+        _showMissingApiKeySnack('Real Debrid');
+        return;
+      }
+      setState(() {
+        _pages[4] = DebridDownloadsScreen(initialMagnetLink: magnetLink);
+      });
+      _onItemTapped(4);
+      // Reset the page after a delay
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _pages[4] = const DebridDownloadsScreen();
+          });
+        }
+      });
+    };
     MainPageBridge.openTorboxAction = (torboxTorrent, action) {
       if (!mounted) return;
       if (!_hasTorboxKey) {
@@ -448,6 +467,7 @@ class _MainPageState extends State<MainPage> {
     MainPageBridge.removeIntegrationListener(_handleIntegrationChanged);
     MainPageBridge.switchTab = null;
     MainPageBridge.openDebridOptions = null;
+    MainPageBridge.openDebridWithMagnet = null;
     MainPageBridge.openTorboxAction = null;
     MainPageBridge.hideAutoLaunchOverlay = null;
     DeepLinkService().dispose();

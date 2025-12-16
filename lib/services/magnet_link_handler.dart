@@ -4,6 +4,7 @@ import 'debrid_service.dart';
 import 'torbox_service.dart';
 import 'pikpak_api_service.dart';
 import 'storage_service.dart';
+import 'main_page_bridge.dart';
 import '../models/rd_torrent.dart';
 import '../models/torbox_torrent.dart';
 
@@ -125,6 +126,7 @@ class MagnetLinkHandler {
     );
   }
 
+
   /// Add magnet link to RealDebrid
   Future<void> _addToRealDebrid(
     String magnetUri,
@@ -138,37 +140,13 @@ class MagnetLinkHandler {
       return;
     }
 
-    _showLoadingDialog(torrentName, 'RealDebrid');
-
-    try {
-      final result = await DebridService.addTorrentToDebrid(apiKey, magnetUri);
-
-      if (!context.mounted) return;
-      Navigator.of(context).pop(); // Close loading dialog
-
-      // Use the same post-action handling as torrent search
-      if (onRealDebridResult != null) {
-        await onRealDebridResult!(result, torrentName, apiKey);
-      } else {
-        // Fallback: just show success and navigate to RD tab
-        final torrentId = result['torrentId'];
-        if (torrentId != null) {
-          final torrent = await DebridService.getTorrentInfo(apiKey, torrentId);
-          final rdTorrent = RDTorrent.fromJson(torrent);
-
-          _showSuccess('Successfully added to RealDebrid');
-
-          if (onRealDebridAdded != null) {
-            onRealDebridAdded!(rdTorrent);
-          }
-        } else {
-          _showSuccess('Successfully added to RealDebrid');
-        }
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(context).pop(); // Close loading dialog
-      _showError('Error adding to RealDebrid: $e');
+    // Use MainPageBridge to open Real Debrid tab with magnet link
+    if (MainPageBridge.openDebridWithMagnet != null) {
+      MainPageBridge.openDebridWithMagnet!(magnetUri);
+    } else {
+      // Fallback: just switch to Real Debrid tab
+      MainPageBridge.switchTab?.call(4); // Real Debrid tab index
+      _showError('Please add the magnet link manually in the Real Debrid tab');
     }
   }
 

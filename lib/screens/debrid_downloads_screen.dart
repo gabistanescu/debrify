@@ -16,9 +16,14 @@ import '../services/download_service.dart';
 import 'dart:ui'; // Added for ImageFilter
 
 class DebridDownloadsScreen extends StatefulWidget {
-  const DebridDownloadsScreen({super.key, this.initialTorrentForOptions});
+  const DebridDownloadsScreen({
+    super.key,
+    this.initialTorrentForOptions,
+    this.initialMagnetLink,
+  });
 
   final RDTorrent? initialTorrentForOptions;
+  final String? initialMagnetLink;
 
   @override
   State<DebridDownloadsScreen> createState() => _DebridDownloadsScreenState();
@@ -352,6 +357,17 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     if (apiKey != null) {
       await _fetchTorrents(apiKey, reset: true);
       await _fetchDownloads(apiKey, reset: true);
+      
+      // Process initial magnet link if provided
+      if (widget.initialMagnetLink != null && mounted) {
+        // Set the magnet in the controller
+        _magnetController.text = widget.initialMagnetLink!;
+        // Trigger the add magnet flow (not from dialog)
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          _addMagnetWithDefaultSelection(fromDialog: false);
+        }
+      }
     } else {
       if (mounted) {
         setState(() {
@@ -3925,17 +3941,6 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showAdvancedMagnetDialog,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: const BorderSide(color: Color(0xFF475569)),
-                    ),
-                    child: const Text('Advanced'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
                   child: FilledButton(
                     onPressed: _isAddingMagnet
                         ? null
@@ -3993,7 +3998,7 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     return true;
   }
 
-  Future<void> _addMagnetWithDefaultSelection() async {
+  Future<void> _addMagnetWithDefaultSelection({bool fromDialog = true}) async {
     final magnetLink = _magnetController.text.trim();
     if (magnetLink.isEmpty) {
       _showError('Please enter a magnet link');
@@ -4005,26 +4010,39 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
       return;
     }
 
-    Navigator.of(context).pop(); // Close the dialog
+    // Only close the "Add Magnet" dialog if we're coming from it
+    if (fromDialog && mounted) {
+      Navigator.of(context).pop(); // Close the dialog
+    }
 
     // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Adding Torrent'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            const Text('Processing magnet link...'),
-            const SizedBox(height: 8),
-            Text(
-              'This may take a few moments',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-          ],
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Checking cache and loading files...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -4036,42 +4054,97 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
     }
 
     try {
-      // Get the default file selection preference
-      final fileSelection = await StorageService.getFileSelection();
-
-      // Add the magnet using the same logic as the torrent search screen
-      await DebridService.addTorrentToDebrid(
-        _apiKey!,
-        magnetLink,
-        tempFileSelection: fileSelection,
-      );
-
+      // Try addTorrentToDebrid first - this will check if cached
+      // If it succeeds, the torrent is CACHED
+      final result = await DebridService.addTorrentToDebrid(_apiKey!, magnetLink);
+      
+      final tempTorrentId = result['torrentId'] as String;
+      final files = result['files'] as List<dynamic>?;
+      final isCached = true; // If we got here without error, it's cached!
+      
+      // Check if files are available
+      if (files == null || files.isEmpty) {
+        try {
+          await DebridService.deleteTorrent(_apiKey!, tempTorrentId);
+        } catch (e) {
+          print('Failed to delete empty torrent: $e');
+        }
+        
+        // Close loading dialog
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        
+        if (mounted) {
+          _showError('No files available for this torrent');
+        }
+        return;
+      }
+      
+      // DELETE the temporary torrent (it has files selected already)
+      // We'll re-add it with addMagnet so user can select manually
+      try {
+        await DebridService.deleteTorrent(_apiKey!, tempTorrentId);
+      } catch (e) {
+        print('Failed to delete temp torrent: $e');
+      }
+      
+      // Re-add with addMagnet (no files selected)
+      final addResult = await DebridService.addMagnet(_apiKey!, magnetLink);
+      final torrentId = addResult['id'] as String;
+      
+      // Wait for files to be available
+      await Future.delayed(const Duration(seconds: 2));
+      
+      // Get fresh torrent info
+      final torrentInfo = await DebridService.getTorrentInfo(_apiKey!, torrentId);
+      final freshFiles = torrentInfo['files'] as List<dynamic>?;
+      
       // Close loading dialog
-      if (mounted) {
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-
-      // Clear the input
-      _magnetController.clear();
-
-      // Show success message
+      
+      if (freshFiles == null || freshFiles.isEmpty) {
+        try {
+          await DebridService.deleteTorrent(_apiKey!, torrentId);
+        } catch (_) {}
+        if (mounted) {
+          _showError('No files available for this torrent');
+        }
+        return;
+      }
+      
+      // Show file selection dialog (CACHED)
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Magnet added successfully!'),
-            backgroundColor: Colors.green,
-          ),
+        await _showMagnetFileSelectionDialog(
+          magnetLink: magnetLink,
+          torrentId: torrentId,
+          files: freshFiles,
+          isCached: isCached,
         );
       }
-
-      // Refresh the torrent list
-      await _fetchTorrents(_apiKey!, reset: true);
     } catch (e) {
       // Close loading dialog
-      if (mounted) {
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
 
+      // Check if the error is due to non-cached torrent
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('not readily available') || 
+          errorMessage.contains('file is not available') ||
+          errorMessage.contains('not cached') ||
+          errorMessage.contains('please try a different torrent') ||
+          errorMessage.contains('magnet') ||
+          errorMessage.contains('no server') ||
+          errorMessage.contains('error')) {
+        // Torrent is NOT cached - use addMagnet to get file list
+        await _showNonCachedMagnetFileSelectionDialog(magnetLink);
+        return;
+      }
+
+      // Show error message for other errors
       if (mounted) {
         _showError(_getUserFriendlyErrorMessage(e.toString()));
       }
@@ -4080,6 +4153,132 @@ class _DebridDownloadsScreenState extends State<DebridDownloadsScreen> {
         setState(() {
           _isAddingMagnet = false;
         });
+      }
+    }
+  }
+  Future<void> _showNonCachedMagnetFileSelectionDialog(String magnetLink) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Loading files...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Add magnet to Real Debrid
+      final addResult = await DebridService.addMagnet(_apiKey!, magnetLink);
+      final torrentId = addResult['id'] as String;
+      
+      // Wait for files to be available
+      await Future.delayed(const Duration(seconds: 2));
+      
+      // Get torrent info to see files
+      final torrentInfo = await DebridService.getTorrentInfo(_apiKey!, torrentId);
+      final files = torrentInfo['files'] as List<dynamic>?;
+      
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      if (files == null || files.isEmpty) {
+        try {
+          await DebridService.deleteTorrent(_apiKey!, torrentId);
+        } catch (_) {}
+        if (mounted) {
+          _showError('No files available for this torrent');
+        }
+        return;
+      }
+      
+      // Show file selection dialog (NOT CACHED)
+      if (mounted) {
+        await _showMagnetFileSelectionDialog(
+          magnetLink: magnetLink,
+          torrentId: torrentId,
+          files: files,
+          isCached: false,
+        );
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      if (mounted) {
+        _showError('Error loading files: ${e.toString()}');
+      }
+    }
+  }
+
+
+  Future<void> _showMagnetFileSelectionDialog({
+    required String magnetLink,
+    required String torrentId,
+    required List<dynamic> files,
+    required bool isCached,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return _MagnetFileSelectionDialog(
+          magnetLink: magnetLink,
+          apiKey: _apiKey!,
+          torrentId: torrentId,
+          files: files,
+          isCached: isCached,
+          onFilesSelected: () async {
+            // Clear the input
+            _magnetController.clear();
+            // Refresh the torrent list
+            await _fetchTorrents(_apiKey!, reset: true);
+          },
+        );
+      },
+    );
+    
+    // If dialog was closed without selecting files (result is null or false), delete the torrent
+    if (result != true) {
+      try {
+        await DebridService.deleteTorrent(_apiKey!, torrentId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Torrent cancelled and removed from library'),
+              backgroundColor: Color(0xFF6B7280),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        // Silently fail - torrent deletion is not critical
+        print('Failed to delete torrent: $e');
       }
     }
   }
@@ -6062,3 +6261,649 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
   }
 }
 
+// File selection dialog for magnet links (same as torrent search)
+class _MagnetFileSelectionDialog extends StatefulWidget {
+  final String magnetLink;
+  final String apiKey;
+  final String torrentId;
+  final List<dynamic> files;
+  final bool isCached;
+  final Future<void> Function() onFilesSelected;
+
+  const _MagnetFileSelectionDialog({
+    required this.magnetLink,
+    required this.apiKey,
+    required this.torrentId,
+    required this.files,
+    required this.isCached,
+    required this.onFilesSelected,
+  });
+
+  @override
+  State<_MagnetFileSelectionDialog> createState() => _MagnetFileSelectionDialogState();
+}
+
+class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> {
+  final Set<int> _selectedFileIds = {};
+  bool _selectAll = true;
+  List<dynamic> _sortedFiles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Group files by folder
+    final Map<String, List<dynamic>> folderGroups = {};
+    for (final file in widget.files) {
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      if (!folderGroups.containsKey(folder)) {
+        folderGroups[folder] = [];
+      }
+      folderGroups[folder]!.add(file);
+    }
+    
+    // Sort folders by name (natural sort)
+    final sortedFolders = folderGroups.keys.toList()..sort((a, b) => _naturalCompare(a, b));
+    
+    // Sort files within each folder and build final sorted list
+    _sortedFiles = [];
+    for (final folder in sortedFolders) {
+      final filesInFolder = folderGroups[folder]!;
+      // Sort files by name within the folder (natural sort)
+      filesInFolder.sort((a, b) {
+        final nameA = (a['path'] as String?)?.split('/').last ?? '';
+        final nameB = (b['path'] as String?)?.split('/').last ?? '';
+        return _naturalCompare(nameA, nameB);
+      });
+      _sortedFiles.addAll(filesInFolder);
+    }
+    
+    // Select all files by default
+    for (final file in widget.files) {
+      _selectedFileIds.add(file['id'] as int);
+    }
+    _selectAll = true;
+  }
+
+  /// Natural sort comparison that handles numbers correctly.
+  int _naturalCompare(String a, String b) {
+    final RegExp numberPattern = RegExp(r'(\d+)');
+    final List<String> aParts = [];
+    final List<String> bParts = [];
+    
+    // Split strings into text and number parts
+    int aIndex = 0;
+    for (final match in numberPattern.allMatches(a)) {
+      if (match.start > aIndex) {
+        aParts.add(a.substring(aIndex, match.start));
+      }
+      aParts.add(match.group(0)!);
+      aIndex = match.end;
+    }
+    if (aIndex < a.length) {
+      aParts.add(a.substring(aIndex));
+    }
+    
+    int bIndex = 0;
+    for (final match in numberPattern.allMatches(b)) {
+      if (match.start > bIndex) {
+        bParts.add(b.substring(bIndex, match.start));
+      }
+      bParts.add(match.group(0)!);
+      bIndex = match.end;
+    }
+    if (bIndex < b.length) {
+      bParts.add(b.substring(bIndex));
+    }
+    
+    // Compare parts
+    for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+      final aPart = aParts[i];
+      final bPart = bParts[i];
+      
+      // Check if both parts are numbers
+      final aNum = int.tryParse(aPart);
+      final bNum = int.tryParse(bPart);
+      
+      if (aNum != null && bNum != null) {
+        // Compare numerically
+        if (aNum != bNum) {
+          return aNum.compareTo(bNum);
+        }
+      } else {
+        // Compare lexicographically (case-insensitive)
+        final comparison = aPart.toLowerCase().compareTo(bPart.toLowerCase());
+        if (comparison != 0) {
+          return comparison;
+        }
+      }
+    }
+    
+    // If all parts match, compare by length
+    return aParts.length.compareTo(bParts.length);
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectAll) {
+        _selectedFileIds.clear();
+      } else {
+        _selectedFileIds.clear();
+        for (final file in widget.files) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = !_selectAll;
+    });
+  }
+
+  void _selectOnlyVideoFiles() {
+    setState(() {
+      _selectedFileIds.clear();
+      for (final file in widget.files) {
+        final fileName = (file['name'] as String?)?.isNotEmpty == true
+            ? file['name'] as String
+            : FileUtils.getFileName(file['path'] as String? ?? '');
+        if (fileName.isNotEmpty && FileUtils.isVideoFile(fileName)) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = _selectedFileIds.length == widget.files.length;
+    });
+  }
+
+  void _selectOnlySubtitles() {
+    setState(() {
+      _selectedFileIds.clear();
+      for (final file in widget.files) {
+        final fileName = (file['name'] as String?)?.isNotEmpty == true
+            ? file['name'] as String
+            : FileUtils.getFileName(file['path'] as String? ?? '');
+        if (fileName.isNotEmpty && FileUtils.isSubtitleFile(fileName)) {
+          _selectedFileIds.add(file['id'] as int);
+        }
+      }
+      _selectAll = _selectedFileIds.length == widget.files.length;
+    });
+  }
+
+  List<Widget> _buildFileListItems() {
+    final List<Widget> items = [];
+    String? currentFolder;
+    
+    for (int i = 0; i < _sortedFiles.length; i++) {
+      final file = _sortedFiles[i];
+      final path = file['path'] as String? ?? '';
+      final parts = path.split('/');
+      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+      
+      // Add folder header if it's a new folder
+      if (folder != currentFolder) {
+        currentFolder = folder;
+        if (folder.isNotEmpty) {
+          // Show only the last subfolder name
+          final folderName = folder.split('/').last;
+          items.add(
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.folder,
+                    color: Color(0xFF8B5CF6),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      folderName,
+                      style: const TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      }
+      
+      // Add file item
+      final fileId = file['id'] as int;
+      String fileName = (file['name'] as String?)?.isNotEmpty == true
+          ? file['name'] as String
+          : FileUtils.getFileName(path);
+      if (fileName.isEmpty) fileName = 'Unknown';
+      final fileSize = file['bytes'] as int? ?? 0;
+      final isSelected = _selectedFileIds.contains(fileId);
+      final isVideo = FileUtils.isVideoFile(fileName);
+
+      items.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                : const Color(0xFF1F2937),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF6366F1)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: 2,
+            ),
+          ),
+          child: CheckboxListTile(
+            value: isSelected,
+            onChanged: (bool? value) {
+              setState(() {
+                if (value == true) {
+                  _selectedFileIds.add(fileId);
+                } else {
+                  _selectedFileIds.remove(fileId);
+                }
+                _selectAll = _selectedFileIds.length == widget.files.length;
+              });
+            },
+            title: Row(
+              children: [
+                Icon(
+                  isVideo ? Icons.movie : Icons.insert_drive_file,
+                  color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    fileName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4, left: 28),
+              child: Text(
+                '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            activeColor: const Color(0xFF6366F1),
+            checkColor: Colors.white,
+          ),
+        ),
+      );
+    }
+    
+    return items;
+  }
+
+  Future<void> _addToRealDebrid() async {
+    if (_selectedFileIds.isEmpty) return;
+
+    // Save messenger before closing dialog
+    final messenger = ScaffoldMessenger.of(context);
+    
+    // Close file selection dialog first with true (files added successfully)
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
+
+    try {
+      // Select files
+      await DebridService.selectFiles(
+        widget.apiKey,
+        widget.torrentId,
+        _selectedFileIds.toList(),
+      );
+
+      // Call the callback to refresh the list
+      await widget.onFilesSelected();
+
+      // Show success message
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.download, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Torrent added with selected files!',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      // Show error
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.error, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Failed to add torrent: ${e.toString()}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                ),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.playlist_add_check,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Select Files',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    tooltip: 'Cancel and delete torrent',
+                  ),
+                ],
+              ),
+            ),
+
+            // Cache Status Badge
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: widget.isCached
+                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                    : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.isCached
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    widget.isCached ? Icons.flash_on : Icons.hourglass_empty,
+                    color: widget.isCached
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEF4444),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      widget.isCached ? 'Cached' : 'Not Cached',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: widget.isCached
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFEF4444),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleSelectAll,
+                      icon: Icon(
+                        _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                        size: 18,
+                      ),
+                      label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: PopupMenuButton<String>(
+                      offset: const Offset(0, 8),
+                      onSelected: (value) {
+                        if (value == 'video') {
+                          _selectOnlyVideoFiles();
+                        } else if (value == 'subtitles') {
+                          _selectOnlySubtitles();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'video',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Video', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'subtitles',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Subtitles', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      color: const Color(0xFF1E293B),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                      ),
+                      position: PopupMenuPosition.under,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF10B981)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                            SizedBox(width: 8),
+                            Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Stats
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${_selectedFileIds.length} of ${widget.files.length} files selected',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Files list grouped by folder
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(16),
+                itemCount: _buildFileListItems().length,
+                itemBuilder: (context, index) {
+                  return _buildFileListItems()[index];
+                },
+              ),
+            ),
+
+            // Add button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Add to Real-Debrid',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -12,6 +12,7 @@ enum TorboxQuickAction {
 class MainPageBridge {
   static void Function(int index)? switchTab;
   static void Function(RDTorrent torrent)? openDebridOptions;
+  static void Function(String magnetLink)? openDebridWithMagnet;
   static void Function(TorboxTorrent torrent, TorboxQuickAction action)?
       openTorboxAction;
   static Future<void> Function(Map<String, dynamic> result, String torrentName, String apiKey)? handleRealDebridResult;
