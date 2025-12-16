@@ -4014,7 +4014,6 @@ class _Controls extends StatelessWidget {
               // Detect if video is rotated to portrait (270°)
               final isVideoRotatedPortrait = videoRotation == 270;
               final topPadding = isVideoRotatedPortrait ? 60.0 : 0.0;
-              debugPrint('🎯 VIDEO CONTROLS: videoRotation=$videoRotation, isVideoRotatedPortrait=$isVideoRotatedPortrait, topPadding=$topPadding');
               return Padding(
                 // Extra top padding when video is rotated to portrait to avoid punch-hole camera
                 padding: EdgeInsets.only(top: topPadding),

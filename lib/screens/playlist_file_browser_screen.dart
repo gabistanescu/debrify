@@ -25,6 +25,7 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
   List<dynamic> _allFiles = [];
   List<dynamic> _allTorrentFiles = [];
   List<dynamic> _links = [];
+  Map<int, String> _fileIdToLink = {}; // Map file ID to its restricted link
   bool _isLoading = true;
   String? _error;
   bool _sortAscending = true; // true = A-Z, false = Z-A
@@ -83,24 +84,58 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
       }
 
       // Filter only video files and create a mapping to their links
+      // IMPORTANT: Real-Debrid returns links ONLY for files where selected=1
+      // Links are in the order of selected files, NOT in the order of all files
       final List<dynamic> videoFiles = [];
       final List<String> videoLinks = [];
+      final Map<int, String> fileIdToLink = {};
+      
+      int selectedFileIndex = 0; // Counter for selected files (maps to links array)
+      int skippedFiles = 0;
+      int nonVideoFiles = 0;
+      int videoFilesWithoutLinks = 0;
       
       for (int i = 0; i < files.length; i++) {
         final file = files[i];
         final path = file['path'] as String? ?? '';
+        final fileId = file['id'] as int?;
+        final selected = file['selected'] as int? ?? 0;
+        
         if (FileUtils.isVideoFile(path)) {
-          videoFiles.add(file);
-          if (i < links.length) {
-            videoLinks.add(links[i].toString());
+          // Check if this file is selected (has a link)
+          if (selected == 1) {
+            // This file has a link at position selectedFileIndex
+            if (selectedFileIndex < links.length) {
+              final link = links[selectedFileIndex].toString();
+              
+              if (link.isNotEmpty && fileId != null) {
+                videoFiles.add(file);
+                videoLinks.add(link);
+                fileIdToLink[fileId] = link;
+              } else {
+                skippedFiles++;
+              }
+            }
+            selectedFileIndex++; // Increment for next selected file
+          } else {
+            videoFilesWithoutLinks++;
           }
+        } else {
+          nonVideoFiles++;
         }
+      }
+      
+      print('Loaded ${fileIdToLink.length} video files with links');
+      
+      if (fileIdToLink.isEmpty) {
+        throw Exception('No video files with download links found. Please ensure files are selected in Real-Debrid.');
       }
 
       setState(() {
         _allFiles = videoFiles;
         _allTorrentFiles = files; // Keep for reference
         _links = videoLinks; // Only links for video files
+        _fileIdToLink = fileIdToLink; // ID to link mapping
         _isLoading = false;
       });
     } catch (e) {
@@ -290,17 +325,23 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
         throw Exception('API key not found');
       }
 
-      // Find current file's index in video files list using the actualFile
-      final actualFileId = actualFile['id'];
-      final fileIndex = _allFiles.indexWhere((f) => f['id'] == actualFileId);
-      if (fileIndex == -1 || fileIndex >= _links.length) {
-        throw Exception('File link not found');
+      // Get the restricted link for this file using the file ID
+      final actualFileId = actualFile['id'] as int?;
+      if (actualFileId == null) {
+        throw Exception('File ID not found');
+      }
+      
+      final restrictedLink = _fileIdToLink[actualFileId];
+      if (restrictedLink == null || restrictedLink.isEmpty) {
+        print('ERROR: File ID $actualFileId not found in mapping!');
+        print('File path: ${actualFile['path']}');
+        throw Exception('File link not found for file ID: $actualFileId');
       }
 
       // Unrestrict only the current video
       final unrestrictResult = await DebridService.unrestrictLink(
         apiKey,
-        _links[fileIndex],
+        restrictedLink,
       );
 
       final downloadLink = unrestrictResult['download']?.toString() ?? '';
@@ -320,31 +361,32 @@ class _PlaylistFileBrowserScreenState extends State<PlaylistFileBrowserScreen> {
         if (!mounted) return; // Check periodically during large loops
         
         final sortedFile = sortedFiles[i];
-        final sortedFileId = sortedFile['id'];
+        final sortedFileId = sortedFile['id'] as int?;
         
-        // Find index in _allFiles (which only contains video files)
-        final videoFileIndex = _allFiles.indexWhere((f) => f['id'] == sortedFileId);
-        
-        if (videoFileIndex != -1 && videoFileIndex < _links.length) {
-          final path = sortedFile['path'] as String? ?? 'Video';
-          final bytes = sortedFile['bytes'] as int?;
-          final isCurrentFile = sortedFileId == actualFileId; // Compare with actualFileId
+        if (sortedFileId != null) {
+          final fileRestrictedLink = _fileIdToLink[sortedFileId];
           
-          // Track the actual index in playlistEntries for the current file
-          if (isCurrentFile) {
-            actualCurrentIndex = playlistEntries.length;
+          if (fileRestrictedLink != null && fileRestrictedLink.isNotEmpty) {
+            final path = sortedFile['path'] as String? ?? 'Video';
+            final bytes = sortedFile['bytes'] as int?;
+            final isCurrentFile = sortedFileId == actualFileId; // Compare with actualFileId
+            
+            // Track the actual index in playlistEntries for the current file
+            if (isCurrentFile) {
+              actualCurrentIndex = playlistEntries.length;
+            }
+            
+            playlistEntries.add(
+              PlaylistEntry(
+                url: isCurrentFile ? downloadLink : '', // Only current has unrestricted URL
+                title: path,
+                restrictedLink: fileRestrictedLink, // Use the mapped link
+                sizeBytes: bytes,
+                provider: 'realdebrid',
+                fileId: sortedFileId, // Save original file ID
+              ),
+            );
           }
-          
-          playlistEntries.add(
-            PlaylistEntry(
-              url: isCurrentFile ? downloadLink : '', // Only current has unrestricted URL
-              title: path,
-              restrictedLink: _links[videoFileIndex], // Use video file index
-              sizeBytes: bytes,
-              provider: 'realdebrid',
-              fileId: sortedFileId, // Save original file ID
-            ),
-          );
         }
       }
       
