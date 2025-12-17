@@ -81,14 +81,46 @@ class _MovieCollectionBrowserState extends State<MovieCollectionBrowser> {
     final main = List.generate(entries.length, (i) => i);
     final extras = <int>[]; // Empty extras
     
-    // Sort by title (A-Z or Z-A)
+    // Folder-aware natural sort (matches file browser and playlist screen)
     main.sort((a, b) {
-      final comparison = entries[a].title.toLowerCase().compareTo(entries[b].title.toLowerCase());
+      final titleA = entries[a].title;
+      final titleB = entries[b].title;
+      
+      // Natural compare function
+      int naturalCompare(String s1, String s2) {
+        int i1 = 0, i2 = 0;
+        while (i1 < s1.length && i2 < s2.length) {
+          final c1 = s1.codeUnitAt(i1);
+          final c2 = s2.codeUnitAt(i2);
+          final isDigit1 = c1 >= 48 && c1 <= 57;
+          final isDigit2 = c2 >= 48 && c2 <= 57;
+          if (isDigit1 && isDigit2) {
+            int j1 = i1, j2 = i2;
+            while (j1 < s1.length && s1.codeUnitAt(j1) >= 48 && s1.codeUnitAt(j1) <= 57) j1++;
+            while (j2 < s2.length && s2.codeUnitAt(j2) >= 48 && s2.codeUnitAt(j2) <= 57) j2++;
+            final n1 = int.parse(s1.substring(i1, j1));
+            final n2 = int.parse(s2.substring(i2, j2));
+            if (n1 != n2) return n1.compareTo(n2);
+            i1 = j1;
+            i2 = j2;
+          } else {
+            final lower1 = c1 >= 65 && c1 <= 90 ? c1 + 32 : c1;
+            final lower2 = c2 >= 65 && c2 <= 90 ? c2 + 32 : c2;
+            if (lower1 != lower2) return lower1.compareTo(lower2);
+            i1++;
+            i2++;
+          }
+        }
+        return s1.length.compareTo(s2.length);
+      }
+      
+      final comparison = naturalCompare(titleA, titleB);
       return _sortAscending ? comparison : -comparison;
     });
     
     return {MovieGroup.main: main, MovieGroup.extras: extras};
   }
+
 
   @override
   Widget build(BuildContext context) {

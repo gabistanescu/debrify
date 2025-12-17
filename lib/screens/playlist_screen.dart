@@ -434,9 +434,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         }
 
         // Always sort like file browser (folder-aware natural sort A-Z) to match Browse behavior
-        debugPrint('RD: Applying folder-aware natural sort (A-Z) to ${entries.length} entries');
-        debugPrint('RD: First 3 entries BEFORE sort: ${entries.take(3).map((e) => e.title).toList()}');
-        
         // Group entries by folder
         final Map<String, List<PlaylistEntry>> folderGroups = {};
         for (final entry in entries) {
@@ -450,9 +447,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           }
           folderGroups[folder]!.add(entry);
         }
-        
-        debugPrint('RD: Found ${folderGroups.length} folders');
-        debugPrint('RD: First 3 folder names: ${folderGroups.keys.take(3).toList()}');
         
         // Sort folders by name (natural sort A-Z)
         final sortedFolders = folderGroups.keys.toList()..sort((a, b) => _naturalCompare(a, b));
@@ -469,8 +463,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         // Replace entries with sorted version
         entries.clear();
         entries.addAll(sortedEntries);
-        
-        debugPrint('RD: First 3 entries AFTER sort: ${entries.take(3).map((e) => e.title).toList()}');
 
 
 
@@ -481,22 +473,15 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         // If targetPath is provided, find the matching index in the built playlist
         int actualStartIndex = startIndex;
         if (targetPath != null && targetPath.isNotEmpty) {
-          debugPrint('RD: Searching for targetPath=$targetPath in ${entries.length} entries');
-          for (int i = 0; i < entries.length && i < 5; i++) {
-            debugPrint('RD: Entry $i: ${entries[i].title}');
-          }
-          
           final matchIndex = entries.indexWhere((entry) => 
             entry.title == targetPath || 
             entry.title.endsWith(targetPath) ||
             targetPath.endsWith(entry.title));
           if (matchIndex != -1) {
             actualStartIndex = matchIndex;
-            debugPrint('RD: Found matching file at index $actualStartIndex for path: $targetPath');
-          } else {
-            debugPrint('RD: Could not find matching file for path: $targetPath, using index $startIndex');
           }
         }
+
 
         String initialVideoUrl = '';
         if (actualStartIndex < entries.length && entries[actualStartIndex].url.isNotEmpty) {
