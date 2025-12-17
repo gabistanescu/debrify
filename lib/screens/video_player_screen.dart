@@ -1332,6 +1332,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           videoIndex: index,
           positionMs: 0,
           videoTitle: fileName,
+          videoPath: entry.title,
         );
       } catch (e) {
         // Ignore errors for last played

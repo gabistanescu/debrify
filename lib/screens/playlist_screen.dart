@@ -17,6 +17,65 @@ import '../services/pikpak_api_service.dart';
 import 'video_player_screen.dart';
 import 'playlist_file_browser_screen.dart';
 
+// Natural sort helper function (copied from file browser for consistency)
+int _naturalCompare(String a, String b) {
+  final RegExp numberPattern = RegExp(r'(\d+)');
+  final List<String> aParts = [];
+  final List<String> bParts = [];
+  
+  // Split strings into text and number parts
+  int aIndex = 0;
+  for (final match in numberPattern.allMatches(a)) {
+    if (match.start > aIndex) {
+      aParts.add(a.substring(aIndex, match.start));
+    }
+    aParts.add(match.group(0)!);
+    aIndex = match.end;
+  }
+  if (aIndex < a.length) {
+    aParts.add(a.substring(aIndex));
+  }
+  
+  int bIndex = 0;
+  for (final match in numberPattern.allMatches(b)) {
+    if (match.start > bIndex) {
+      bParts.add(b.substring(bIndex, match.start));
+    }
+    bParts.add(match.group(0)!);
+    bIndex = match.end;
+  }
+  if (bIndex < b.length) {
+    bParts.add(b.substring(bIndex));
+  }
+  
+  // Compare parts
+  for (int i = 0; i < aParts.length && i < bParts.length; i++) {
+    final aPart = aParts[i];
+    final bPart = bParts[i];
+    
+    // Check if both parts are numbers
+    final aNum = int.tryParse(aPart);
+    final bNum = int.tryParse(bPart);
+    
+    if (aNum != null && bNum != null) {
+      // Compare numerically
+      if (aNum != bNum) {
+        return aNum.compareTo(bNum);
+      }
+    } else {
+      // Compare lexicographically (case-insensitive)
+      final comparison = aPart.toLowerCase().compareTo(bPart.toLowerCase());
+      if (comparison != 0) {
+        return comparison;
+      }
+    }
+  }
+  
+  // If all parts match, compare by length
+  return aParts.length.compareTo(bParts.length);
+}
+
+
 class PlaylistScreen extends StatefulWidget {
   const PlaylistScreen({super.key});
 
@@ -311,7 +370,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
         final bool isSeries = SeriesParser.isSeriesPlaylist(filenames);
         int firstIndex = 0;
-        if (isSeries) {
+        // Only calculate firstIndex if not preserving original order (when targetPath is not provided)
+        if (isSeries && (targetPath == null || targetPath.isEmpty)) {
           final seriesInfos = SeriesParser.parsePlaylist(filenames);
           int lowestSeason = 999, lowestEpisode = 999;
           for (int i = 0; i < seriesInfos.length; i++) {
@@ -326,6 +386,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           }
         }
 
+
         // Map from original file index in allFiles to its index within selected/used files (for links[] mapping)
         final List<int> usedOriginalIndices = [];
         for (int i = 0; i < allFiles.length; i++) {
@@ -335,9 +396,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         final List<PlaylistEntry> entries = [];
         for (int i = 0; i < filesToUse.length; i++) {
           final f = filesToUse[i];
+          // Keep full path for folder-aware sorting - don't strip the path
           String? filename = f['name']?.toString() ?? f['filename']?.toString() ?? f['path']?.toString();
-          if (filename != null && filename.startsWith('/')) filename = filename.split('/').last;
           final finalFilename = filename ?? 'Unknown File';
+
           final int? sizeBytes = (f is Map) ? (f['bytes'] as int?) : null;
 
           // Map to original index to pick RD link via usedOriginalIndices position
@@ -370,6 +432,51 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           );
           return;
         }
+
+        // Always sort like file browser (folder-aware natural sort A-Z) to match Browse behavior
+        debugPrint('RD: Applying folder-aware natural sort (A-Z) to ${entries.length} entries');
+        debugPrint('RD: First 3 entries BEFORE sort: ${entries.take(3).map((e) => e.title).toList()}');
+        
+        // Group entries by folder
+        final Map<String, List<PlaylistEntry>> folderGroups = {};
+        for (final entry in entries) {
+          // Remove leading slash if present
+          final cleanPath = entry.title.startsWith('/') ? entry.title.substring(1) : entry.title;
+          final parts = cleanPath.split('/');
+          final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+          
+          if (!folderGroups.containsKey(folder)) {
+            folderGroups[folder] = [];
+          }
+          folderGroups[folder]!.add(entry);
+        }
+        
+        debugPrint('RD: Found ${folderGroups.length} folders');
+        debugPrint('RD: First 3 folder names: ${folderGroups.keys.take(3).toList()}');
+        
+        // Sort folders by name (natural sort A-Z)
+        final sortedFolders = folderGroups.keys.toList()..sort((a, b) => _naturalCompare(a, b));
+        
+        // Sort files within each folder and rebuild entries list
+        final List<PlaylistEntry> sortedEntries = [];
+        for (final folder in sortedFolders) {
+          final filesInFolder = folderGroups[folder]!;
+          // Sort files by FULL PATH within the folder (natural sort A-Z)
+          filesInFolder.sort((a, b) => _naturalCompare(a.title, b.title));
+          sortedEntries.addAll(filesInFolder);
+        }
+        
+        // Replace entries with sorted version
+        entries.clear();
+        entries.addAll(sortedEntries);
+        
+        debugPrint('RD: First 3 entries AFTER sort: ${entries.take(3).map((e) => e.title).toList()}');
+
+
+
+
+
+
 
         // If targetPath is provided, find the matching index in the built playlist
         int actualStartIndex = startIndex;
@@ -637,6 +744,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       final entries = _buildTorboxPlaylistEntries(
         torrent: torrent,
         files: files,
+        preserveOriginalOrder: targetPath != null && targetPath.isNotEmpty,
       );
       final playlistEntries = entries.playlistEntries;
       final computedStartIndex = entries.startIndex;
@@ -911,35 +1019,39 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       final bool isSeriesCollection =
           candidates.length > 1 && SeriesParser.isSeriesPlaylist(filenames);
 
-      // Sort entries
-      if (isSeriesCollection) {
-        candidates.sort((a, b) {
-          final aInfo = a.info;
-          final bInfo = b.info;
+      // Only sort if not preserving original order (when targetPath is not provided)
+      if (targetPath == null || targetPath.isEmpty) {
+        // Sort entries
+        if (isSeriesCollection) {
+          candidates.sort((a, b) {
+            final aInfo = a.info;
+            final bInfo = b.info;
 
-          final aIsSeries =
-              aInfo.isSeries && aInfo.season != null && aInfo.episode != null;
-          final bIsSeries =
-              bInfo.isSeries && bInfo.season != null && bInfo.episode != null;
+            final aIsSeries =
+                aInfo.isSeries && aInfo.season != null && aInfo.episode != null;
+            final bIsSeries =
+                bInfo.isSeries && bInfo.season != null && bInfo.episode != null;
 
-          if (aIsSeries && bIsSeries) {
-            final seasonCompare = (aInfo.season ?? 0).compareTo(bInfo.season ?? 0);
-            if (seasonCompare != 0) return seasonCompare;
+            if (aIsSeries && bIsSeries) {
+              final seasonCompare = (aInfo.season ?? 0).compareTo(bInfo.season ?? 0);
+              if (seasonCompare != 0) return seasonCompare;
 
-            final episodeCompare =
-                (aInfo.episode ?? 0).compareTo(bInfo.episode ?? 0);
-            if (episodeCompare != 0) return episodeCompare;
-          } else if (aIsSeries != bIsSeries) {
-            return aIsSeries ? -1 : 1;
-          }
+              final episodeCompare =
+                  (aInfo.episode ?? 0).compareTo(bInfo.episode ?? 0);
+              if (episodeCompare != 0) return episodeCompare;
+            } else if (aIsSeries != bIsSeries) {
+              return aIsSeries ? -1 : 1;
+            }
 
-          return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-        });
-      } else {
-        candidates.sort(
-          (a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
-        );
+            return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+          });
+        } else {
+          candidates.sort(
+            (a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+          );
+        }
       }
+
 
       // Find first episode to start from
       int actualStartIndex = 0;
@@ -2422,6 +2534,7 @@ class _TorboxPlaylistEntriesResult {
 _TorboxPlaylistEntriesResult _buildTorboxPlaylistEntries({
   required TorboxTorrent torrent,
   required List<TorboxFile> files,
+  bool preserveOriginalOrder = false,
 }) {
   final filenames = files
       .map(
@@ -2454,28 +2567,32 @@ _TorboxPlaylistEntriesResult _buildTorboxPlaylistEntries({
     ));
   }
 
-  candidates.sort((a, b) {
-    final aInfo = a.info;
-    final bInfo = b.info;
+  // Only sort by season/episode if not preserving original order
+  if (!preserveOriginalOrder) {
+    candidates.sort((a, b) {
+      final aInfo = a.info;
+      final bInfo = b.info;
 
-    final aIsSeries =
-        aInfo.isSeries && aInfo.season != null && aInfo.episode != null;
-    final bIsSeries =
-        bInfo.isSeries && bInfo.season != null && bInfo.episode != null;
+      final aIsSeries =
+          aInfo.isSeries && aInfo.season != null && aInfo.episode != null;
+      final bIsSeries =
+          bInfo.isSeries && bInfo.season != null && bInfo.episode != null;
 
-    if (aIsSeries && bIsSeries) {
-      final seasonCompare = (aInfo.season ?? 0).compareTo(bInfo.season ?? 0);
-      if (seasonCompare != 0) return seasonCompare;
+      if (aIsSeries && bIsSeries) {
+        final seasonCompare = (aInfo.season ?? 0).compareTo(bInfo.season ?? 0);
+        if (seasonCompare != 0) return seasonCompare;
 
-      final episodeCompare =
-          (aInfo.episode ?? 0).compareTo(bInfo.episode ?? 0);
-      if (episodeCompare != 0) return episodeCompare;
-    } else if (aIsSeries != bIsSeries) {
-      return aIsSeries ? -1 : 1;
-    }
+        final episodeCompare =
+            (aInfo.episode ?? 0).compareTo(bInfo.episode ?? 0);
+        if (episodeCompare != 0) return episodeCompare;
+      } else if (aIsSeries != bIsSeries) {
+        return aIsSeries ? -1 : 1;
+      }
 
-    return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-  });
+      return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    });
+  }
+
 
   int startIndex = 0;
   if (isSeriesCollection) {
