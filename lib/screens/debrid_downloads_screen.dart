@@ -5700,6 +5700,8 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
   final Set<int> _selectedFileIds = {};
   bool _selectAll = true;
   List<dynamic> _sortedFiles = [];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -5929,6 +5931,12 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -6000,82 +6008,142 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
               ),
             ),
 
-            // Action buttons
+            // Search bar (always visible at top)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2937),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                    width: 2,
+                  ),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Search files...',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Color(0xFF6366F1),
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(
+                              Icons.clear,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Action buttons (Row 2) - Deselect All and Only
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _toggleSelectAll,
-                      icon: Icon(
-                        _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
-                        size: 18,
-                      ),
-                      label: Text(_selectAll ? 'Deselect All' : 'Select All'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: _toggleSelectAll,
+                        icon: Icon(
+                          _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                          size: 18,
+                        ),
+                        label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: PopupMenuButton<String>(
-                      offset: const Offset(0, 8),
-                      onSelected: (value) {
-                        if (value == 'video') {
-                          _selectOnlyVideoFiles();
-                        } else if (value == 'subtitles') {
-                          _selectOnlySubtitles();
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'video',
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Video', style: TextStyle(color: Colors.white)),
-                            ],
+                    child: SizedBox(
+                      height: 48,
+                      child: PopupMenuButton<String>(
+                        offset: const Offset(0, 8),
+                        onSelected: (value) {
+                          if (value == 'video') {
+                            _selectOnlyVideoFiles();
+                          } else if (value == 'subtitles') {
+                            _selectOnlySubtitles();
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'video',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                                SizedBox(width: 8),
+                                Text('Video', style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
                           ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'subtitles',
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Subtitles', style: TextStyle(color: Colors.white)),
-                            ],
+                          const PopupMenuItem(
+                            value: 'subtitles',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                                SizedBox(width: 8),
+                                Text('Subtitles', style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                      color: const Color(0xFF1E293B),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                      ),
-                      position: PopupMenuPosition.under,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFF10B981)),
+                        ],
+                        color: const Color(0xFF1E293B),
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                         ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
-                            SizedBox(width: 8),
-                            Text('Only', style: TextStyle(color: Color(0xFF10B981))),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
-                          ],
+                        position: PopupMenuPosition.under,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF10B981)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -6083,6 +6151,8 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 12),
 
             // Stats
             Padding(
@@ -6100,124 +6170,143 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
 
             // Files list grouped by folder
             Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(16),
-                itemCount: _sortedFiles.length,
-                itemBuilder: (context, index) {
-                  final file = _sortedFiles[index];
-                  final path = file['path'] as String? ?? '';
-                  final parts = path.split('/');
-                  final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
-                  
-                  // Check if this is the start of a new folder
-                  final isNewFolder = index == 0 || 
-                    (index > 0 && 
-                      (_sortedFiles[index - 1]['path'] as String? ?? '').split('/').sublist(0, parts.length - 1).join('/') != folder);
-                  
-                  final fileId = file['id'] as int;
-                  String fileName = (file['name'] as String?)?.isNotEmpty == true
-                      ? file['name'] as String
-                      : FileUtils.getFileName(path);
-                  if (fileName.isEmpty) fileName = 'Unknown';
-                  final fileSize = file['bytes'] as int? ?? 0;
-                  final isSelected = _selectedFileIds.contains(fileId);
-                  final isVideo = FileUtils.isVideoFile(fileName);
+              child: Builder(
+                builder: (context) {
+                  // Filter files based on search query
+                  final filteredFiles = _searchQuery.isEmpty
+                      ? _sortedFiles
+                      : _sortedFiles.where((file) {
+                          final path = file['path'] as String? ?? '';
+                          final fileName = (file['name'] as String?)?.isNotEmpty == true
+                              ? file['name'] as String
+                              : FileUtils.getFileName(path);
+                          return fileName.toLowerCase().contains(_searchQuery.toLowerCase());
+                        }).toList();
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Folder header
-                      if (isNewFolder && folder.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(top: index == 0 ? 0 : 16, bottom: 8),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.folder,
-                                color: Color(0xFF8B5CF6),
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  folder.split('/').last,
-                                  style: const TextStyle(
-                                    color: Color(0xFF8B5CF6),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filteredFiles.length,
+                    itemBuilder: (context, index) {
+                      final file = filteredFiles[index];
+                      final path = file['path'] as String? ?? '';
+                      final parts = path.split('/');
+                      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
                       
-                      // File item
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-                              : const Color(0xFF1F2937),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF6366F1)
-                                : Colors.white.withValues(alpha: 0.1),
-                            width: 2,
-                          ),
-                        ),
-                        child: CheckboxListTile(
-                          value: isSelected,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              if (value == true) {
-                                _selectedFileIds.add(fileId);
-                              } else {
-                                _selectedFileIds.remove(fileId);
-                              }
-                              _selectAll = _selectedFileIds.length == widget.files.length;
-                            });
-                          },
-                          title: Row(
-                            children: [
-                              Icon(
-                                isVideo ? Icons.movie : Icons.insert_drive_file,
-                                color: isVideo ? const Color(0xFF10B981) : Colors.white70,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  fileName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
+                      // Check if this is the start of a new folder (with safe bounds checking)
+                      bool isNewFolder = index == 0;
+                      if (index > 0) {
+                        final prevPath = filteredFiles[index - 1]['path'] as String? ?? '';
+                        final prevParts = prevPath.split('/');
+                        final prevFolder = prevParts.length > 1 ? prevParts.sublist(0, prevParts.length - 1).join('/') : '';
+                        isNewFolder = prevFolder != folder;
+                      }
+                      
+                      final fileId = file['id'] as int;
+                      String fileName = (file['name'] as String?)?.isNotEmpty == true
+                          ? file['name'] as String
+                          : FileUtils.getFileName(path);
+                      if (fileName.isEmpty) fileName = 'Unknown';
+                      final fileSize = file['bytes'] as int? ?? 0;
+                      final isSelected = _selectedFileIds.contains(fileId);
+                      final isVideo = FileUtils.isVideoFile(fileName);
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Folder header
+                          if (isNewFolder && folder.isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: index == 0 ? 0 : 16, bottom: 8),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.folder,
+                                    color: Color(0xFF8B5CF6),
+                                    size: 20,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 4, left: 28),
-                            child: Text(
-                              '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.6),
-                                fontSize: 12,
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      folder.split('/').last,
+                                      style: const TextStyle(
+                                        color: Color(0xFF8B5CF6),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
+                          
+                          // File item
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                                  : const Color(0xFF1F2937),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF6366F1)
+                                    : Colors.white.withValues(alpha: 0.1),
+                                width: 2,
+                              ),
+                            ),
+                            child: CheckboxListTile(
+                              value: isSelected,
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  if (value == true) {
+                                    _selectedFileIds.add(fileId);
+                                  } else {
+                                    _selectedFileIds.remove(fileId);
+                                  }
+                                  _selectAll = _selectedFileIds.length == widget.files.length;
+                                });
+                              },
+                              title: Row(
+                                children: [
+                                  Icon(
+                                    isVideo ? Icons.movie : Icons.insert_drive_file,
+                                    color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      fileName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4, left: 28),
+                                child: Text(
+                                  '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              activeColor: const Color(0xFF6366F1),
+                              checkColor: Colors.white,
+                            ),
                           ),
-                          activeColor: const Color(0xFF6366F1),
-                          checkColor: Colors.white,
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -6287,6 +6376,9 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
   final Set<int> _selectedFileIds = {};
   bool _selectAll = true;
   List<dynamic> _sortedFiles = [];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _isSearchExpanded = false;
 
   @override
   void initState() {
@@ -6434,8 +6526,19 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
     final List<Widget> items = [];
     String? currentFolder;
     
-    for (int i = 0; i < _sortedFiles.length; i++) {
-      final file = _sortedFiles[i];
+    // Filter files based on search query
+    final filteredFiles = _searchQuery.isEmpty
+        ? _sortedFiles
+        : _sortedFiles.where((file) {
+            final path = file['path'] as String? ?? '';
+            final fileName = (file['name'] as String?)?.isNotEmpty == true
+                ? file['name'] as String
+                : FileUtils.getFileName(path);
+            return fileName.toLowerCase().contains(_searchQuery.toLowerCase());
+          }).toList();
+    
+    for (int i = 0; i < filteredFiles.length; i++) {
+      final file = filteredFiles[i];
       final path = file['path'] as String? ?? '';
       final parts = path.split('/');
       final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
@@ -6643,6 +6746,12 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -6714,45 +6823,92 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
               ),
             ),
 
-            // Cache Status Badge
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: widget.isCached
-                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                    : const Color(0xFFEF4444).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: widget.isCached
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFFEF4444),
-                  width: 2,
-                ),
-              ),
+            // Action buttons (Row 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    widget.isCached ? Icons.flash_on : Icons.hourglass_empty,
-                    color: widget.isCached
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
-                    size: 20,
+                  Expanded(
+                    flex: 1,
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: _toggleSelectAll,
+                        icon: Icon(
+                          _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                          size: 18,
+                        ),
+                        label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      widget.isCached ? 'Cached' : 'Not Cached',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: widget.isCached
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFEF4444),
-                        fontWeight: FontWeight.bold,
+                  Expanded(
+                    flex: 1,
+                    child: SizedBox(
+                      height: 48,
+                      child: PopupMenuButton<String>(
+                        offset: const Offset(0, 8),
+                        onSelected: (value) {
+                          if (value == 'video') {
+                            _selectOnlyVideoFiles();
+                          } else if (value == 'subtitles') {
+                            _selectOnlySubtitles();
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'video',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                                SizedBox(width: 8),
+                                Text('Video', style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'subtitles',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                                SizedBox(width: 8),
+                                Text('Subtitles', style: TextStyle(color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                        ],
+                        color: const Color(0xFF1E293B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                        ),
+                        position: PopupMenuPosition.under,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF10B981)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                              SizedBox(width: 8),
+                              Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -6760,82 +6916,78 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
               ),
             ),
 
-            // Action buttons
+            // Cache badge and Search button (Row 2)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Row(
                 children: [
+                  // Cache Status Badge (left) - matches first button width
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _toggleSelectAll,
-                      icon: Icon(
-                        _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
-                        size: 18,
+                    flex: 1,
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: widget.isCached
+                            ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                            : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: widget.isCached
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
+                          width: 2,
+                        ),
                       ),
-                      label: Text(_selectAll ? 'Deselect All' : 'Select All'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            widget.isCached ? Icons.flash_on : Icons.hourglass_empty,
+                            color: widget.isCached
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFEF4444),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.isCached ? 'Cached' : 'Not Cached',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: widget.isCached
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Search button (right) - matches second button width
                   Expanded(
-                    child: PopupMenuButton<String>(
-                      offset: const Offset(0, 8),
-                      onSelected: (value) {
-                        if (value == 'video') {
-                          _selectOnlyVideoFiles();
-                        } else if (value == 'subtitles') {
-                          _selectOnlySubtitles();
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'video',
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Video', style: TextStyle(color: Colors.white)),
-                            ],
-                          ),
+                    flex: 1,
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _isSearchExpanded = !_isSearchExpanded;
+                            if (!_isSearchExpanded) {
+                              _searchController.clear();
+                              _searchQuery = '';
+                            }
+                          });
+                        },
+                        icon: Icon(
+                          _isSearchExpanded ? Icons.search_off : Icons.search,
+                          size: 18,
                         ),
-                        const PopupMenuItem(
-                          value: 'subtitles',
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Subtitles', style: TextStyle(color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      ],
-                      color: const Color(0xFF1E293B),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                      ),
-                      position: PopupMenuPosition.under,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFF10B981)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
-                            SizedBox(width: 8),
-                            Text('Only', style: TextStyle(color: Color(0xFF10B981))),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
-                          ],
+                        label: Text(_isSearchExpanded ? 'Hide' : 'Search'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF6366F1),
+                          side: const BorderSide(color: Color(0xFF6366F1)),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                         ),
                       ),
                     ),
@@ -6843,6 +6995,68 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
                 ],
               ),
             ),
+
+            // Animated expandable Search bar
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: _isSearchExpanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1F2937),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                            width: 2,
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          onChanged: (value) {
+                            setState(() {
+                              _searchQuery = value;
+                            });
+                          },
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Search files...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Color(0xFF6366F1),
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      color: Colors.white70,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _searchQuery = '';
+                                      });
+                                    },
+                                  )
+                                : null,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
+            const SizedBox(height: 12),
 
             // Stats
             Padding(
