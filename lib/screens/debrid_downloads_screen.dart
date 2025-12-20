@@ -5938,412 +5938,425 @@ class _FileSelectionScreenState extends State<_FileSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 600,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+    return Material(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 600,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-            width: 2,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E293B), Color(0xFF334155)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+              width: 2,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                ),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18),
-                ),
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.playlist_add_check,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              // Header
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
                   ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Select Files',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(18),
+                  ),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.playlist_add_check,
                         color: Colors.white,
+                        size: 24,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    tooltip: 'Cancel',
-                  ),
-                ],
-              ),
-            ),
-
-            // Search bar (always visible at top)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F2937),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.5),
-                    width: 2,
-                  ),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Search files...',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: Color(0xFF6366F1),
-                    ),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(
-                              Icons.clear,
-                              color: Colors.white70,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _searchController.clear();
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Action buttons (Row 2) - Deselect All and Only
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: _toggleSelectAll,
-                        icon: Icon(
-                          _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
-                          size: 18,
-                        ),
-                        label: Text(_selectAll ? 'Deselect All' : 'Select All'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select Files',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: PopupMenuButton<String>(
-                        offset: const Offset(0, 8),
-                        onSelected: (value) {
-                          if (value == 'video') {
-                            _selectOnlyVideoFiles();
-                          } else if (value == 'subtitles') {
-                            _selectOnlySubtitles();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'video',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Video', style: TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'subtitles',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Subtitles', style: TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          ),
-                        ],
-                        color: const Color(0xFF1E293B),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                        ),
-                        position: PopupMenuPosition.under,
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF10B981)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Only', style: TextStyle(color: Color(0xFF10B981))),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
-                            ],
-                          ),
-                        ),
-                      ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      tooltip: 'Cancel',
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Stats
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '${_selectedFileIds.length} of ${widget.files.length} files selected',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 13,
+                  ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 8),
-
-            // Files list grouped by folder
-            Flexible(
-              child: Builder(
-                builder: (context) {
-                  // Filter files based on search query
-                  final filteredFiles = _searchQuery.isEmpty
-                      ? _sortedFiles
-                      : _sortedFiles.where((file) {
-                          final path = file['path'] as String? ?? '';
-                          final fileName = (file['name'] as String?)?.isNotEmpty == true
-                              ? file['name'] as String
-                              : FileUtils.getFileName(path);
-                          return fileName.toLowerCase().contains(_searchQuery.toLowerCase());
-                        }).toList();
-
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredFiles.length,
-                    itemBuilder: (context, index) {
-                      final file = filteredFiles[index];
-                      final path = file['path'] as String? ?? '';
-                      final parts = path.split('/');
-                      final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
-                      
-                      // Check if this is the start of a new folder (with safe bounds checking)
-                      bool isNewFolder = index == 0;
-                      if (index > 0) {
-                        final prevPath = filteredFiles[index - 1]['path'] as String? ?? '';
-                        final prevParts = prevPath.split('/');
-                        final prevFolder = prevParts.length > 1 ? prevParts.sublist(0, prevParts.length - 1).join('/') : '';
-                        isNewFolder = prevFolder != folder;
-                      }
-                      
-                      final fileId = file['id'] as int;
-                      String fileName = (file['name'] as String?)?.isNotEmpty == true
-                          ? file['name'] as String
-                          : FileUtils.getFileName(path);
-                      if (fileName.isEmpty) fileName = 'Unknown';
-                      final fileSize = file['bytes'] as int? ?? 0;
-                      final isSelected = _selectedFileIds.contains(fileId);
-                      final isVideo = FileUtils.isVideoFile(fileName);
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Folder header
-                          if (isNewFolder && folder.isNotEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(top: index == 0 ? 0 : 16, bottom: 8),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.folder,
-                                    color: Color(0xFF8B5CF6),
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      folder.split('/').last,
-                                      style: const TextStyle(
-                                        color: Color(0xFF8B5CF6),
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+              // Search bar (always visible at top)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2937),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Search files...',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFF6366F1),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(
+                                Icons.clear,
+                                color: Colors.white70,
                               ),
-                            ),
-                          
-                          // File item
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-                                  : const Color(0xFF1F2937),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFF6366F1)
-                                    : Colors.white.withValues(alpha: 0.1),
-                                width: 2,
-                              ),
-                            ),
-                            child: CheckboxListTile(
-                              value: isSelected,
-                              onChanged: (bool? value) {
+                              onPressed: () {
                                 setState(() {
-                                  if (value == true) {
-                                    _selectedFileIds.add(fileId);
-                                  } else {
-                                    _selectedFileIds.remove(fileId);
-                                  }
-                                  _selectAll = _selectedFileIds.length == widget.files.length;
+                                  _searchController.clear();
+                                  _searchQuery = '';
                                 });
                               },
-                              title: Row(
-                                children: [
-                                  Icon(
-                                    isVideo ? Icons.movie : Icons.insert_drive_file,
-                                    color: isVideo ? const Color(0xFF10B981) : Colors.white70,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      fileName,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 4, left: 28),
-                                child: Text(
-                                  '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.6),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              activeColor: const Color(0xFF6366F1),
-                              checkColor: Colors.white,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-
-            // Add button
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
                   ),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              ),
+
+              // Action buttons (Row 2) - Deselect All and Only
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
                   children: [
-                    Icon(Icons.add_circle_outline, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add to Real-Debrid',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleSelectAll,
+                          icon: Icon(
+                            _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+                            size: 18,
+                          ),
+                          label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 48,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return PopupMenuButton<String>(
+                              constraints: BoxConstraints(
+                                minWidth: constraints.maxWidth,
+                                maxWidth: constraints.maxWidth,
+                              ),
+                              offset: const Offset(0, 8),
+                              onSelected: (value) {
+                                if (value == 'video') {
+                                  _selectOnlyVideoFiles();
+                                } else if (value == 'subtitles') {
+                                  _selectOnlySubtitles();
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'video',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Video', style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'subtitles',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Subtitles', style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              color: const Color(0xFF1E293B),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                              ),
+                              position: PopupMenuPosition.under,
+                              child: Container(
+                                height: 48,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFF10B981)),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                                    SizedBox(width: 4),
+                                    Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 12),
+
+              // Stats
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '${_selectedFileIds.length} of ${widget.files.length} files selected',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Files list grouped by folder
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    // Filter files based on search query
+                    final filteredFiles = _searchQuery.isEmpty
+                        ? _sortedFiles
+                        : _sortedFiles.where((file) {
+                            final path = file['path'] as String? ?? '';
+                            final fileName = (file['name'] as String?)?.isNotEmpty == true
+                                ? file['name'] as String
+                                : FileUtils.getFileName(path);
+                            return fileName.toLowerCase().contains(_searchQuery.toLowerCase());
+                          }).toList();
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredFiles.length,
+                      itemBuilder: (context, index) {
+                        final file = filteredFiles[index];
+                        final path = file['path'] as String? ?? '';
+                        final parts = path.split('/');
+                        final folder = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '';
+                        
+                        // Check if this is the start of a new folder (with safe bounds checking)
+                        bool isNewFolder = index == 0;
+                        if (index > 0) {
+                          final prevPath = filteredFiles[index - 1]['path'] as String? ?? '';
+                          final prevParts = prevPath.split('/');
+                          final prevFolder = prevParts.length > 1 ? prevParts.sublist(0, prevParts.length - 1).join('/') : '';
+                          isNewFolder = prevFolder != folder;
+                        }
+                        
+                        final fileId = file['id'] as int;
+                        String fileName = (file['name'] as String?)?.isNotEmpty == true
+                            ? file['name'] as String
+                            : FileUtils.getFileName(path);
+                        if (fileName.isEmpty) fileName = 'Unknown';
+                        final fileSize = file['bytes'] as int? ?? 0;
+                        final isSelected = _selectedFileIds.contains(fileId);
+                        final isVideo = FileUtils.isVideoFile(fileName);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Folder header
+                            if (isNewFolder && folder.isNotEmpty)
+                              Padding(
+                                padding: EdgeInsets.only(top: index == 0 ? 0 : 16, bottom: 8),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.folder,
+                                      color: Color(0xFF8B5CF6),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        folder.split('/').last,
+                                        style: const TextStyle(
+                                          color: Color(0xFF8B5CF6),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            
+                            // File item
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                                    : const Color(0xFF1F2937),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF6366F1)
+                                      : Colors.white.withValues(alpha: 0.1),
+                                  width: 2,
+                                ),
+                              ),
+                              child: CheckboxListTile(
+                                value: isSelected,
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      _selectedFileIds.add(fileId);
+                                    } else {
+                                      _selectedFileIds.remove(fileId);
+                                    }
+                                    _selectAll = _selectedFileIds.length == widget.files.length;
+                                  });
+                                },
+                                title: Row(
+                                  children: [
+                                    Icon(
+                                      isVideo ? Icons.movie : Icons.insert_drive_file,
+                                      color: isVideo ? const Color(0xFF10B981) : Colors.white70,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        fileName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 4, left: 28),
+                                  child: Text(
+                                    '${Formatters.formatFileSize(fileSize)} • ${FileUtils.getFileType(fileName)}',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                activeColor: const Color(0xFF6366F1),
+                                checkColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+
+              // Add button
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ElevatedButton(
+                  onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_circle_outline, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Add to Real-Debrid',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -6753,369 +6766,386 @@ class _MagnetFileSelectionDialogState extends State<_MagnetFileSelectionDialog> 
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 600,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+    return Material(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 600,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-            width: 2,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E293B), Color(0xFF334155)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+              width: 2,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              // Header
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    topRight: Radius.circular(18),
+                  ),
                 ),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18),
-                ),
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.playlist_add_check,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Select Files',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    tooltip: 'Cancel and delete torrent',
-                  ),
-                ],
-              ),
-            ),
-
-            // Action buttons (Row 1)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: _toggleSelectAll,
-                        icon: Icon(
-                          _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
-                          size: 18,
-                        ),
-                        label: Text(_selectAll ? 'Deselect All' : 'Select All'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 1,
-                    child: SizedBox(
-                      height: 48,
-                      child: PopupMenuButton<String>(
-                        offset: const Offset(0, 8),
-                        onSelected: (value) {
-                          if (value == 'video') {
-                            _selectOnlyVideoFiles();
-                          } else if (value == 'subtitles') {
-                            _selectOnlySubtitles();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'video',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Video', style: TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'subtitles',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Subtitles', style: TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          ),
-                        ],
-                        color: const Color(0xFF1E293B),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                        ),
-                        position: PopupMenuPosition.under,
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF10B981)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Only', style: TextStyle(color: Color(0xFF10B981))),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Cache badge and Search button (Row 2)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  // Cache Status Badge (left) - matches first button width
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      height: 48,
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: widget.isCached
-                            ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                            : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: widget.isCached
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFFEF4444),
-                          width: 2,
+                      ),
+                      child: const Icon(
+                        Icons.playlist_add_check,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select Files',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            widget.isCached ? Icons.flash_on : Icons.hourglass_empty,
-                            color: widget.isCached
-                                ? const Color(0xFF10B981)
-                                : const Color(0xFFEF4444),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      tooltip: 'Cancel and delete torrent',
+                    ),
+                  ],
+                ),
+              ),
+
+              // Action buttons (Row 1) - Deselect All and Only
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleSelectAll,
+                          icon: Icon(
+                            _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
                             size: 18,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.isCached ? 'Cached' : 'Not Cached',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: widget.isCached
-                                  ? const Color(0xFF10B981)
-                                  : const Color(0xFFEF4444),
-                              fontWeight: FontWeight.bold,
-                            ),
+                          label: Text(_selectAll ? 'Deselect All' : 'Select All'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Search button (right) - matches second button width
-                  Expanded(
-                    flex: 1,
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _isSearchExpanded = !_isSearchExpanded;
-                            if (!_isSearchExpanded) {
-                              _searchController.clear();
-                              _searchQuery = '';
-                            }
-                          });
-                        },
-                        icon: Icon(
-                          _isSearchExpanded ? Icons.search_off : Icons.search,
-                          size: 18,
-                        ),
-                        label: Text(_isSearchExpanded ? 'Hide' : 'Search'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF6366F1),
-                          side: const BorderSide(color: Color(0xFF6366F1)),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Animated expandable Search bar
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: _isSearchExpanded
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1F2937),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFF6366F1).withValues(alpha: 0.5),
-                            width: 2,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          autofocus: true,
-                          onChanged: (value) {
-                            setState(() {
-                              _searchQuery = value;
-                            });
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 48,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return PopupMenuButton<String>(
+                              constraints: BoxConstraints(
+                                minWidth: constraints.maxWidth,
+                                maxWidth: constraints.maxWidth,
+                              ),
+                              offset: const Offset(0, 8),
+                              onSelected: (value) {
+                                if (value == 'video') {
+                                  _selectOnlyVideoFiles();
+                                } else if (value == 'subtitles') {
+                                  _selectOnlySubtitles();
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'video',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Video', style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'subtitles',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Subtitles', style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              color: const Color(0xFF1E293B),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                              ),
+                              position: PopupMenuPosition.under,
+                              child: Container(
+                                height: 48,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFF10B981)),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                                    SizedBox(width: 4),
+                                    Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                                  ],
+                                ),
+                              ),
+                            );
                           },
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Search files...',
-                            hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Color(0xFF6366F1),
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(
-                                      Icons.clear,
-                                      color: Colors.white70,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _searchController.clear();
-                                        _searchQuery = '';
-                                      });
-                                    },
-                                  )
-                                : null,
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
                         ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Stats
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '${_selectedFileIds.length} of ${widget.files.length} files selected',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Files list grouped by folder
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(16),
-                itemCount: _buildFileListItems().length,
-                itemBuilder: (context, index) {
-                  return _buildFileListItems()[index];
-                },
-              ),
-            ),
-
-            // Add button
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add_circle_outline, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add to Real-Debrid',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+
+              // Cache badge and Search button (Row 2)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    // Cache Status Badge (left) - matches first button width
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: widget.isCached
+                              ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                              : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: widget.isCached
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFEF4444),
+                            width: 2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              widget.isCached ? Icons.flash_on : Icons.hourglass_empty,
+                              color: widget.isCached
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.isCached ? 'Cached' : 'Not Cached',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: widget.isCached
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFFEF4444),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Search button (right) - matches second button width
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isSearchExpanded = !_isSearchExpanded;
+                              if (!_isSearchExpanded) {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              }
+                            });
+                          },
+                          icon: Icon(
+                            _isSearchExpanded ? Icons.search_off : Icons.search,
+                            size: 18,
+                          ),
+                          label: Text(_isSearchExpanded ? 'Hide' : 'Search'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF6366F1),
+                            side: const BorderSide(color: Color(0xFF6366F1)),
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Animated expandable Search bar
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: _isSearchExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1F2937),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                          ),
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (value) {
+                              setState(() {
+                                _searchQuery = value;
+                              });
+                            },
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: 'Search files...',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Color(0xFF6366F1),
+                              ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(
+                                        Icons.clear,
+                                        color: Colors.white70,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _searchController.clear();
+                                          _searchQuery = '';
+                                        });
+                                      },
+                                    )
+                                  : null,
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Stats
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '${_selectedFileIds.length} of ${widget.files.length} files selected',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Files list grouped by folder
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    // Cache the filtered list to avoid rebuilding it multiple times
+                    final fileItems = _buildFileListItems();
+                    
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: fileItems.length,
+                      itemBuilder: (context, index) {
+                        return fileItems[index];
+                      },
+                    );
+                  },
+                ),
+              ),
+
+              // Add button
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ElevatedButton(
+                  onPressed: _selectedFileIds.isEmpty ? null : _addToRealDebrid,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_circle_outline, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Add to Real-Debrid',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

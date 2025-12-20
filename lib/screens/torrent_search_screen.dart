@@ -7772,27 +7772,28 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: 600,
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1E293B), Color(0xFF334155)],
+    return Material(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 600,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-            width: 2,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E293B), Color(0xFF334155)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+              width: 2,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
           children: [
             // Header
             Container(
@@ -7871,63 +7872,73 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
                     flex: 1,
                     child: SizedBox(
                       height: 48,
-                      child: PopupMenuButton<String>(
-                        offset: const Offset(0, 8),
-                        onSelected: (value) {
-                          if (value == 'video') {
-                            _selectOnlyVideoFiles();
-                          } else if (value == 'subtitles') {
-                            _selectOnlySubtitles();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'video',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Video', style: TextStyle(color: Colors.white)),
-                              ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return PopupMenuButton<String>(
+                            constraints: BoxConstraints(
+                              minWidth: constraints.maxWidth,
+                              maxWidth: constraints.maxWidth,
                             ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'subtitles',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
-                                SizedBox(width: 8),
-                                Text('Subtitles', style: TextStyle(color: Colors.white)),
-                              ],
-                            ),
-                          ),
-                        ],
-                        color: const Color(0xFF1E293B),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                        ),
-                        position: PopupMenuPosition.under,
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF10B981)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
-                              SizedBox(width: 8),
-                              Text('Only', style: TextStyle(color: Color(0xFF10B981))),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                            offset: const Offset(0, 8),
+                            onSelected: (value) {
+                              if (value == 'video') {
+                                _selectOnlyVideoFiles();
+                              } else if (value == 'subtitles') {
+                                _selectOnlySubtitles();
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'video',
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.movie, color: Color(0xFF10B981), size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Video', style: TextStyle(color: Colors.white)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'subtitles',
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.subtitles, color: Color(0xFF10B981), size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Subtitles', style: TextStyle(color: Colors.white)),
+                                  ],
+                                ),
+                              ),
                             ],
-                          ),
-                        ),
+                            color: const Color(0xFF1E293B),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                            ),
+                            position: PopupMenuPosition.under,
+                            child: Container(
+                              height: 48,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: const Color(0xFF10B981)),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.filter_list, color: Color(0xFF10B981), size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Only', style: TextStyle(color: Color(0xFF10B981))),
+                                  SizedBox(width: 4),
+                                  Icon(Icons.arrow_drop_down, color: Color(0xFF10B981), size: 18),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -8033,7 +8044,6 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
                         ),
                         child: TextField(
                           controller: _searchController,
-                          autofocus: true,
                           onChanged: (value) {
                             setState(() {
                               _searchQuery = value;
@@ -8092,13 +8102,19 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
             const SizedBox(height: 8),
 
             // Files list grouped by folder
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(16),
-                itemCount: _buildFileListItems().length,
-                itemBuilder: (context, index) {
-                  return _buildFileListItems()[index];
+            Expanded(
+              child: Builder(
+                builder: (context) {
+                  // Cache the filtered list to avoid rebuilding it multiple times
+                  final fileItems = _buildFileListItems();
+                  
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: fileItems.length,
+                    itemBuilder: (context, index) {
+                      return fileItems[index];
+                    },
+                  );
                 },
               ),
             ),
@@ -8136,6 +8152,7 @@ class _FileSelectionDialogState extends State<_FileSelectionDialog> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
